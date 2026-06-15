@@ -1,0 +1,39 @@
+# Dependencias
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Next.js
+.next/
+out/
+build/
+
+# IDEs y Editores
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# Local Env Files
+.env*.local
+.env
+
+# Mobile & Flutter / Expo local cache
+.expo/
+ios/pods/
+android/app/build/
+.gradle/
+*.apk
+*.ipa
+.flutter-plugins
+.flutter-plugins-dependencies
+.dart_tool/
+
+# Vercel
+.vercel

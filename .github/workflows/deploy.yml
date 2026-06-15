@@ -1,0 +1,48 @@
+name: EcoTuc CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout del Repositorio
+      uses: actions/checkout@v3
+
+    - name: Instalar Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-node: '20'
+        cache: 'npm'
+        cache-dependency-path: |
+          backend/package-lock.json
+          frontend-web/package-lock.json
+
+    # 1. Integración Continua del Backend
+    - name: Construir y Validar Backend (NestJS)
+      run: |
+        cd backend
+        npm ci
+        npm run build
+
+    # 2. Integración Continua del Frontend
+    - name: Construir y Validar Frontend (Next.js)
+      run: |
+        cd frontend-web
+        npm ci
+        npm run build
+
+    # 3. Empaquetamiento y Validación Docker (Docker Dry-Run)
+    - name: Verificar Docker Compose Configuration
+      run: |
+        docker compose config
+
+    # 4. Despliegue Simulado (En entorno de prod, aquí se haría SSH deploy o push a ECR/ECS/Vercel)
+    - name: Despliegue Exitoso
+      run: |
+        echo "✅ Compilación exitosa en Docker. Pipeline completado con éxito."

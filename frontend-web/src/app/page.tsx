@@ -773,12 +773,14 @@ export default function AppContainer() {
               <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider text-center">Credenciales de prueba rápida:</span>
               <div className="grid grid-cols-2 gap-2">
                 <button 
+                  type="button"
                   onClick={() => handlePreFill('OPERATOR')}
                   className="bg-cardLight hover:bg-gray-800 text-[10px] text-gray-300 py-2 rounded-lg border border-white/5"
                 >
                   🔑 Rol Operador
                 </button>
                 <button 
+                  type="button"
                   onClick={() => handlePreFill('CITIZEN')}
                   className="bg-cardLight hover:bg-gray-800 text-[10px] text-gray-300 py-2 rounded-lg border border-white/5"
                 >
@@ -1285,10 +1287,11 @@ export default function AppContainer() {
       <section className="p-6 md:px-12 grid grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
         <button
           onClick={() => {
+            console.log("EcoTuc Log: clicked 'Total de Reportes' card");
             setActiveTab('table');
             setMetricFilter('ALL');
           }}
-          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all ${
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 ${
             metricFilter === 'ALL' && activeTab === 'table'
               ? 'ring-2 ring-primary bg-primary/5 shadow-lg shadow-primary/10 scale-[1.02] border-primary/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
@@ -1305,10 +1308,11 @@ export default function AppContainer() {
 
         <button
           onClick={() => {
+            console.log("EcoTuc Log: clicked 'Reportes Abiertos' card");
             setActiveTab('table');
             setMetricFilter('OPEN');
           }}
-          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all ${
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 ${
             ['OPEN', 'PENDIENTE', 'ASIGNADO', 'EN_PROCESO'].includes(metricFilter) && activeTab === 'table'
               ? 'ring-2 ring-amber-500 bg-amber-500/5 shadow-lg shadow-amber-500/10 scale-[1.02] border-amber-500/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
@@ -1325,10 +1329,11 @@ export default function AppContainer() {
 
         <button
           onClick={() => {
+            console.log("EcoTuc Log: clicked 'Resueltos / Cerrados' card");
             setActiveTab('table');
             setMetricFilter('CLOSED');
           }}
-          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all ${
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 ${
             ['CLOSED', 'RESUELTO', 'RECHAZADO'].includes(metricFilter) && activeTab === 'table'
               ? 'ring-2 ring-green-500 bg-green-500/5 shadow-lg shadow-green-500/10 scale-[1.02] border-green-500/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
@@ -1345,10 +1350,11 @@ export default function AppContainer() {
 
         <button
           onClick={() => {
+            console.log("EcoTuc Log: clicked 'Reportes Urgentes' card");
             setActiveTab('table');
             setMetricFilter('URGENT');
           }}
-          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative overflow-hidden group ${
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative overflow-hidden group z-10 ${
             metricFilter === 'URGENT' && activeTab === 'table'
               ? 'ring-2 ring-red-500 bg-red-500/5 shadow-lg shadow-red-500/10 scale-[1.02] border-red-500/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
@@ -1369,10 +1375,11 @@ export default function AppContainer() {
 
         <button
           onClick={() => {
+            console.log("EcoTuc Log: clicked 'Cuadrillas Activas' card");
             setActiveTab('crews');
             setMetricFilter('ALL');
           }}
-          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all ${
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 ${
             activeTab === 'crews'
               ? 'ring-2 ring-accent-blue bg-accent-blue/5 shadow-lg shadow-accent-blue/10 scale-[1.02] border-accent-blue/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'

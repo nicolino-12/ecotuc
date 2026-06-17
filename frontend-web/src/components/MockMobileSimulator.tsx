@@ -53,6 +53,7 @@ export default function MockMobileSimulator({
   // Estados del formulario de Reporte
   const [selectedPhotoIdx, setSelectedPhotoIdx] = useState<number | null>(null);
   const [customPhotoUrl, setCustomPhotoUrl] = useState<string>('');
+  const [customFile, setCustomFile] = useState<File | null>(null);
   const [category, setCategory] = useState<string>('BASURAL');
   const [description, setDescription] = useState<string>('');
   
@@ -102,22 +103,36 @@ export default function MockMobileSimulator({
 
   // Enviar Reporte
   const handleSubmitReport = async () => {
-    const finalPhoto = selectedPhotoIdx !== null ? SAMPLE_PHOTOS[selectedPhotoIdx].url : customPhotoUrl;
+    let finalPhoto = selectedPhotoIdx !== null ? SAMPLE_PHOTOS[selectedPhotoIdx].url : customPhotoUrl;
     if (!finalPhoto) return;
 
     setIsSubmitting(true);
 
-    const payload = {
-      citizenId: 'c7c5a81e-927b-4029-bb88-29470c634b33', // ID del ciudadano mock
-      category: category as any,
-      description,
-      latitude: gpsCoords.lat,
-      longitude: gpsCoords.lng,
-      imageUrl: finalPhoto
-    };
-
     if (apiOnline) {
       try {
+        // Subir archivo propio primero si existe y está online
+        if (customFile) {
+          const formData = new FormData();
+          formData.append('image', customFile);
+          const uploadRes = await fetch(`${backendUrl}/reports/upload`, {
+            method: 'POST',
+            body: formData
+          });
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            finalPhoto = uploadData.imageUrl;
+          }
+        }
+
+        const payload = {
+          citizenId: 'c7c5a81e-927b-4029-bb88-29470c634b33', // ID del ciudadano mock
+          category: category as any,
+          description,
+          latitude: gpsCoords.lat,
+          longitude: gpsCoords.lng,
+          imageUrl: finalPhoto
+        };
+
         const res = await fetch(`${backendUrl}/reports`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -132,6 +147,7 @@ export default function MockMobileSimulator({
           // Reset form
           setSelectedPhotoIdx(null);
           setCustomPhotoUrl('');
+          setCustomFile(null);
           setDescription('');
           simulateNewGps();
         }
@@ -175,6 +191,8 @@ export default function MockMobileSimulator({
 
         // Limpiar
         setSelectedPhotoIdx(null);
+        setCustomPhotoUrl('');
+        setCustomFile(null);
         setDescription('');
         simulateNewGps();
       }, 800);
@@ -349,28 +367,70 @@ export default function MockMobileSimulator({
                   <div className="flex flex-col gap-4">
                     {/* Fotos de prueba */}
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] text-gray-400 font-semibold uppercase">Fotografía Obligatoria (Simulada):</label>
-                      <div className="grid grid-cols-4 gap-2">
+                      <label className="text-[10px] text-gray-400 font-semibold uppercase">Fotografía Obligatoria (Vecino):</label>
+                      <div className="grid grid-cols-4 gap-2 mb-1">
                         {SAMPLE_PHOTOS.map((photo, idx) => (
                           <div 
                             key={idx}
                             onClick={() => {
                               setSelectedPhotoIdx(idx);
+                              setCustomPhotoUrl('');
+                              setCustomFile(null);
                               setCategory(photo.category);
                               setDescription(photo.desc);
                             }}
                             className={`h-14 rounded-lg overflow-hidden border cursor-pointer transition-all relative ${
-                              selectedPhotoIdx === idx ? 'border-primary ring-2 ring-primary/20 scale-95' : 'border-white/5'
+                              selectedPhotoIdx === idx && !customPhotoUrl ? 'border-primary ring-2 ring-primary/20 scale-95' : 'border-white/5'
                             }`}
                           >
                             <img src={photo.url} alt="" className="object-cover w-full h-full" />
-                            {selectedPhotoIdx === idx && (
+                            {selectedPhotoIdx === idx && !customPhotoUrl && (
                               <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
                                 <Check className="h-4 w-4 text-white" />
                               </div>
                             )}
                           </div>
                         ))}
+                      </div>
+
+                      {/* Subir foto real en simulador */}
+                      <div className="flex flex-col gap-2">
+                        <label className="flex items-center justify-center gap-1.5 bg-[#1b1c24] hover:bg-[#20212b] text-[10px] text-white p-2 rounded-xl border border-dashed border-white/10 hover:border-primary cursor-pointer transition-all font-sans">
+                          <Camera className="h-3.5 w-3.5 text-primary" />
+                          <span>{customPhotoUrl ? '📷 Cambiar foto cargada' : '📷 Cargar foto real del vecino'}</span>
+                          <input 
+                            type="file" 
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setCustomFile(file);
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  setCustomPhotoUrl(reader.result as string);
+                                  setSelectedPhotoIdx(null); // Deseleccionar preestablecidas
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </label>
+                        {customPhotoUrl && (
+                          <div className="relative h-20 w-full rounded-xl overflow-hidden border border-primary/20">
+                            <img src={customPhotoUrl} alt="Propia" className="object-cover w-full h-full" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCustomPhotoUrl('');
+                                setCustomFile(null);
+                              }}
+                              className="absolute top-1 right-1 bg-red-500/80 hover:bg-red-500 text-white px-2 py-0.5 rounded text-[8px] font-bold"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -420,10 +480,10 @@ export default function MockMobileSimulator({
                     </div>
 
                     <button 
-                      disabled={selectedPhotoIdx === null || isSubmitting}
+                      disabled={(selectedPhotoIdx === null && !customPhotoUrl) || isSubmitting}
                       onClick={handleSubmitReport}
                       className={`w-full py-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg mt-2 ${
-                        selectedPhotoIdx === null
+                        (selectedPhotoIdx === null && !customPhotoUrl)
                           ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
                           : 'bg-primary hover:bg-primary-dark text-white'
                       }`}

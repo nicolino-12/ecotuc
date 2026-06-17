@@ -80,15 +80,43 @@ export default function ReportFormScreen({ token }: ReportFormScreenProps) {
 
     setIsSubmitting(true);
 
-    // En un entorno de producción, subiríamos el archivo real a S3/Cloudinary a través de FormData.
-    // Para demostración y portabilidad, simulamos subida o mandamos a la API local de EcoTuc.
     try {
+      let imageUrl = '/uploads/placeholder.jpg';
+
+      if (image) {
+        const formData = new FormData();
+        const filename = image.split('/').pop() || 'photo.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+        formData.append('image', {
+          uri: image,
+          name: filename,
+          type,
+        } as any);
+
+        const uploadResponse = await fetch('http://localhost:3001/api/reports/upload', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        if (uploadResponse.ok) {
+          const uploadData = await uploadResponse.json();
+          imageUrl = uploadData.imageUrl;
+        } else {
+          console.warn('Backend image upload failed, status code:', uploadResponse.status);
+        }
+      }
+
       const payload = {
         category,
         description,
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-        imageUrl: '/uploads/basural_hospital.jpg', // URL simulada de desarrollo
+        imageUrl,
       };
 
       const response = await fetch('http://localhost:3001/api/reports', {
@@ -110,6 +138,7 @@ export default function ReportFormScreen({ token }: ReportFormScreenProps) {
       }
     } catch (e) {
       // Fallback si no hay conexión local al backend
+      console.error('Submit report error:', e);
       Alert.alert(
         'EcoTuc Offline', 
         'Reporte guardado en memoria local temporal. Se sincronizará al recuperar señal.'

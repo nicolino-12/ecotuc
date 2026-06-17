@@ -6,14 +6,14 @@ import {
   Trash2, AlertTriangle, Users, CheckCircle, Clock, MapPin, 
   ListFilter, ShieldAlert, PlusCircle, Smartphone, Map as MapIcon, 
   ClipboardList, LogOut, Send, Camera, User, Lock, Mail, Check, HelpCircle, Info,
-  Database, RefreshCw, Eye, Phone, Home
+  Database, RefreshCw, Eye, Phone, Home, Flame
 } from 'lucide-react';
 
 // Base de datos local persistente
 import { 
   initDB, getAllReports, getAllCrews, addReport, getReportStats, 
   saveAllReports, saveAllCrews, getReportsByEmail, resetDB,
-  loginUser, registerUser,
+  loginUser, registerUser, supportReport,
   type Report, type Crew
 } from '../lib/db';
 
@@ -92,6 +92,8 @@ export default function AppContainer() {
   const [citCategory, setCitCategory] = useState<string>('BASURAL');
   const [citDesc, setCitDesc] = useState<string>('');
   const [citPhotoIdx, setCitPhotoIdx] = useState<number | null>(null);
+  const [customPhoto, setCustomPhoto] = useState<string | null>(null);
+  const [customFile, setCustomFile] = useState<File | null>(null);
   const [locationInput, setLocationInput] = useState<string>('');
   const [locationFeedback, setLocationFeedback] = useState<string>('');
   const [citCoords, setCitCoords] = useState<{ lat: number; lng: number }>({
@@ -103,8 +105,18 @@ export default function AppContainer() {
 
   // Vista del ciudadano: mis reportes vs nuevo reporte
   const [citizenView, setCitizenView] = useState<'new' | 'my_reports'>('new');
+  const [citizenReportFilter, setCitizenReportFilter] = useState<'mine' | 'all'>('mine');
 
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+
+  const getImageUrl = (url: string) => {
+    if (!url) return 'https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=600&auto=format&fit=crop';
+    if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    const cleanBackendUrl = backendUrl.replace('/api', '');
+    return `${cleanBackendUrl}${url}`;
+  };
 
   // Inicializar la base de datos local al cargar la app
   useEffect(() => {
@@ -234,6 +246,58 @@ export default function AppContainer() {
     setAuthError(null);
   };
 
+  // Buscar dirección con Nominatim
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+
+  const handleGPSLocation = () => {
+    if (!navigator.geolocation) {
+      alert("La geolocalización no es compatible con este navegador.");
+      return;
+    }
+    setLocationFeedback("Obteniendo coordenadas GPS...");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setCitCoords({ lat: latitude, lng: longitude });
+        setLocationInput(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+        setLocationFeedback("Ubicación GPS obtenida con éxito.");
+      },
+      (error) => {
+        console.error(error);
+        setLocationFeedback("No se pudo obtener la ubicación GPS.");
+      },
+      { enableHighAccuracy: true }
+    );
+  };
+
+  const handleSearchAddress = async () => {
+    if (!locationInput.trim()) return;
+    setIsSearchingAddress(true);
+    setLocationFeedback("Buscando dirección...");
+    try {
+      const query = encodeURIComponent(`${locationInput}, Tucumán, Argentina`);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.length > 0) {
+          const lat = parseFloat(data[0].lat);
+          const lng = parseFloat(data[0].lon);
+          setCitCoords({ lat, lng });
+          setLocationFeedback(`Dirección: ${data[0].display_name.split(',')[0]}`);
+        } else {
+          processLocationInput(locationInput);
+        }
+      } else {
+        processLocationInput(locationInput);
+      }
+    } catch (err) {
+      console.error(err);
+      processLocationInput(locationInput);
+    } finally {
+      setIsSearchingAddress(false);
+    }
+  };
+
   // Helper para convertir formato DMS (Grados Minutos Segundos) a Decimal
   const parseDMS = (dmsStr: string): number | null => {
     const regex = /(\d+)\s*[°d]\s*(\d+)\s*['m]\s*(\d+(?:\.\d+)?)\s*["s]\s*([NSEWnsew])/i;
@@ -315,7 +379,7 @@ export default function AppContainer() {
   // Crear reporte desde Ciudadano Web — PERSISTENTE
   const handleCitizenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (citPhotoIdx === null) return;
+    if (citPhotoIdx === null && !customPhoto) return;
     setIsSubmittingReport(true);
 
     const priority = citCategory === 'PELIGROSO' ? 'CRITICA' 
@@ -328,10 +392,12 @@ export default function AppContainer() {
       : citCategory === 'ALCANTARILLA' ? 75 
       : 50;
 
+    let reportPhotoUrl = customPhoto || (citPhotoIdx !== null ? SAMPLE_PHOTOS[citPhotoIdx].url : '');
+
     const reportData = {
       category: citCategory,
       description: citDesc,
-      imageUrl: SAMPLE_PHOTOS[citPhotoIdx].url,
+      imageUrl: reportPhotoUrl,
       latitude: citCoords.lat,
       longitude: citCoords.lng,
       priority,
@@ -341,17 +407,35 @@ export default function AppContainer() {
       observations: null,
       citizenEmail: user?.email || 'anonimo@ecotuc.com',
       citizenName: user?.fullName || 'Ciudadano Anónimo',
+      upvotes: 0,
+      supportedBy: [],
     };
 
     if (apiOnline) {
       try {
+        // Si hay una foto personalizada y estamos online, subirla primero al backend
+        if (customFile) {
+          const formData = new FormData();
+          formData.append('image', customFile);
+          
+          const uploadRes = await fetch(`${backendUrl}/reports/upload`, {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            reportPhotoUrl = uploadData.imageUrl;
+          }
+        }
+
         const payload = {
           citizenId: 'c7c5a81e-927b-4029-bb88-29470c634b33',
           category: citCategory as any,
           description: citDesc,
           latitude: citCoords.lat,
           longitude: citCoords.lng,
-          imageUrl: SAMPLE_PHOTOS[citPhotoIdx].url
+          imageUrl: reportPhotoUrl
         };
 
         const res = await fetch(`${backendUrl}/reports`, {
@@ -363,12 +447,28 @@ export default function AppContainer() {
           setShowSuccessAlert(true);
           setCitDesc('');
           setCitPhotoIdx(null);
+          setCustomPhoto(null);
+          setCustomFile(null);
           setLocationInput('');
           setLocationFeedback('');
           loadData();
+        } else {
+          throw new Error('La respuesta de la API no fue exitosa');
         }
       } catch (err) {
-        console.error(err);
+        console.warn('Fallo al guardar en API, guardando en local storage:', err);
+        // Fallback local
+        const newReport = addReport(reportData);
+        setReports(getAllReports());
+        setStats(getReportStats());
+
+        setShowSuccessAlert(true);
+        setCitDesc('');
+        setCitPhotoIdx(null);
+        setCustomPhoto(null);
+        setCustomFile(null);
+        setLocationInput('');
+        setLocationFeedback('');
       } finally {
         setIsSubmittingReport(false);
       }
@@ -387,6 +487,8 @@ export default function AppContainer() {
         setShowSuccessAlert(true);
         setCitDesc('');
         setCitPhotoIdx(null);
+        setCustomPhoto(null);
+        setCustomFile(null);
         setLocationInput('');
         setLocationFeedback('');
         setIsSubmittingReport(false);
@@ -749,54 +851,137 @@ export default function AppContainer() {
               <form onSubmit={handleCitizenSubmit} className="flex flex-col gap-4">
                 {/* Fotos del basural */}
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs text-gray-400 font-semibold uppercase">Fotografía Obligatoria (Selecciona una de prueba):</label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {SAMPLE_PHOTOS.map((photo, index) => (
-                      <div 
-                        key={index}
-                        onClick={() => {
-                          setCitPhotoIdx(index);
-                          setCitCategory(photo.category);
-                          setCitDesc(photo.desc);
-                        }}
-                        className={`h-20 rounded-xl overflow-hidden cursor-pointer border-2 transition-all relative ${
-                          citPhotoIdx === index ? 'border-primary ring-4 ring-primary/20 scale-95' : 'border-white/5'
-                        }`}
-                      >
-                        <img src={photo.url} alt="" className="object-cover w-full h-full" />
-                        {citPhotoIdx === index && (
-                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                            <Check className="h-5 w-5 text-white" />
-                          </div>
-                        )}
+                  <label className="text-xs text-gray-400 font-semibold uppercase">Fotografía del Incidente:</label>
+                  
+                  {/* Cargar foto real */}
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-3">
+                      <label className="flex-1 flex items-center justify-center gap-2 bg-cardLight/50 hover:bg-gray-800 text-xs text-white p-3.5 rounded-xl border border-dashed border-white/10 hover:border-primary cursor-pointer transition-all">
+                        <Camera className="h-4 w-4 text-primary" />
+                        <span className="font-sans">{customPhoto ? '📷 Cambiar foto cargada' : '📷 Subir foto desde dispositivo'}</span>
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setCustomFile(file);
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                setCustomPhoto(reader.result as string);
+                                setCitPhotoIdx(null); // Deseleccionar predeterminadas
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                      {customPhoto && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomPhoto(null);
+                            setCustomFile(null);
+                          }}
+                          className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-3.5 rounded-xl border border-red-500/20 text-xs font-semibold font-sans"
+                        >
+                          Eliminar
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Vista previa de foto cargada */}
+                    {customPhoto && (
+                      <div className="h-32 w-full rounded-xl overflow-hidden border border-primary/20 relative shadow-inner">
+                        <img src={customPhoto} alt="Vista previa" className="object-cover w-full h-full" />
+                        <div className="absolute top-2 left-2 bg-primary text-[9px] text-white px-2 py-0.5 rounded-full font-bold uppercase font-sans">
+                          Foto del vecino cargada
+                        </div>
                       </div>
-                    ))}
+                    )}
+                  </div>
+
+                  {/* Fotos preestablecidas para prueba rápida */}
+                  <div className="mt-1 flex flex-col gap-1.5">
+                    <span className="text-[10px] text-gray-500 font-bold uppercase font-sans">O selecciona una simulación rápida:</span>
+                    <div className="grid grid-cols-3 gap-3">
+                      {SAMPLE_PHOTOS.map((photo, index) => (
+                        <div 
+                          key={index}
+                          onClick={() => {
+                            setCitPhotoIdx(index);
+                            setCustomPhoto(null); // Limpiar foto cargada
+                            setCustomFile(null);
+                            setCitCategory(photo.category);
+                            setCitDesc(photo.desc);
+                          }}
+                          className={`h-20 rounded-xl overflow-hidden cursor-pointer border-2 transition-all relative ${
+                            citPhotoIdx === index ? 'border-primary ring-4 ring-primary/20 scale-95' : 'border-white/5'
+                          }`}
+                        >
+                          <img src={photo.url} alt="" className="object-cover w-full h-full" />
+                          {citPhotoIdx === index && (
+                            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                              <Check className="h-5 w-5 text-white" />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
                 {/* Input Inteligente de Dirección / Coordenadas / Maps Link */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs text-gray-400 font-semibold">Dirección, Coordenadas (Decimales / DMS) o Enlace de Google Maps:</label>
-                  <div className="relative">
-                    <input 
-                      type="text"
-                      placeholder="Pega: -26.828, -65.222  o  26°49'42.1&quot;S 65°13'20.3&quot;W  o  enlace..."
-                      value={locationInput}
-                      onChange={(e) => processLocationInput(e.target.value)}
-                      className="bg-cardLight text-xs text-white p-3.5 pr-10 rounded-xl border border-white/5 focus:outline-none focus:border-primary w-full"
-                    />
-                    {locationFeedback && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-primary" title={locationFeedback}>
-                        <Check className="h-4 w-4 bg-primary/10 p-0.5 rounded-full" />
-                      </div>
-                    )}
+                  <label className="text-xs text-gray-400 font-semibold">Dirección de Tucumán o Coordenadas de Maps:</label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <input 
+                        type="text"
+                        placeholder="Ej: Av. Mate de Luna 2000  o  coordenadas..."
+                        value={locationInput}
+                        onChange={(e) => processLocationInput(e.target.value)}
+                        className="bg-cardLight text-xs text-white p-3.5 pr-10 rounded-xl border border-white/5 focus:outline-none focus:border-primary w-full"
+                      />
+                      {locationFeedback && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-primary" title={locationFeedback}>
+                          <Check className="h-4 w-4 bg-primary/10 p-0.5 rounded-full" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Botón de GPS Real */}
+                    <button
+                      type="button"
+                      onClick={handleGPSLocation}
+                      title="Usar mi ubicación GPS actual"
+                      className="bg-primary/10 hover:bg-primary/20 text-primary p-3 rounded-xl border border-primary/20 transition-all flex items-center justify-center"
+                    >
+                      <MapPin className="h-4 w-4" />
+                    </button>
+
+                    {/* Botón de buscar dirección con Nominatim */}
+                    <button
+                      type="button"
+                      onClick={handleSearchAddress}
+                      disabled={isSearchingAddress}
+                      title="Buscar dirección en el mapa"
+                      className="bg-accent-purple/10 hover:bg-accent-purple/20 text-accent-purple p-3 rounded-xl border border-accent-purple/20 transition-all flex items-center justify-center"
+                    >
+                      {isSearchingAddress ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
                   {locationFeedback ? (
-                    <p className="text-[10px] text-primary flex items-center gap-1 mt-0.5">
+                    <p className="text-[10px] text-primary flex items-center gap-1 mt-0.5 font-sans">
                       <Info className="h-3 w-3" /> {locationFeedback}
                     </p>
                   ) : (
-                    <p className="text-[10px] text-gray-500">Puedes copiar y pegar las coordenadas directamente de Google Maps en cualquier formato.</p>
+                    <p className="text-[10px] text-gray-500 font-sans">Escribe una dirección y haz clic en actualizar, o usa el GPS del dispositivo.</p>
                   )}
                 </div>
 
@@ -843,9 +1028,9 @@ export default function AppContainer() {
 
                 <button
                   type="submit"
-                  disabled={citPhotoIdx === null || isSubmittingReport}
+                  disabled={(citPhotoIdx === null && !customPhoto) || isSubmittingReport}
                   className={`w-full py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg ${
-                    citPhotoIdx === null || isSubmittingReport
+                    (citPhotoIdx === null && !customPhoto) || isSubmittingReport
                       ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
                       : 'bg-primary hover:bg-primary-dark text-white shadow-primary/20'
                   }`}
@@ -879,70 +1064,135 @@ export default function AppContainer() {
             </div>
           </main>
         ) : (
-          /* ===== MIS REPORTES ===== */
+          /* ===== MIS REPORTES / REPORTES DEL BARRIO ===== */
           <main className="flex-1 p-6 md:px-12 pb-12">
             <div className="glass-card p-6 md:p-8 rounded-2xl">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <ClipboardList className="h-5 w-5 text-primary" />
-                  Mis Reportes Enviados
-                </h3>
-                <button
-                  onClick={loadData}
-                  className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5 bg-cardLight px-3 py-1.5 rounded-lg border border-white/5"
-                >
-                  <RefreshCw className="h-3 w-3" /> Actualizar
-                </button>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <ClipboardList className="h-5 w-5 text-primary" />
+                    {citizenReportFilter === 'mine' ? 'Mis Reportes Enviados' : 'Incidencias del Barrio'}
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {citizenReportFilter === 'mine' 
+                      ? 'Historial de incidencias reportadas con tu cuenta.' 
+                      : 'Apoya los reportes de otros vecinos para alertar al municipio con mayor prioridad.'}
+                  </p>
+                </div>
+
+                {/* Filtro: Mis Reportes vs Todos */}
+                <div className="flex items-center gap-3">
+                  <div className="flex bg-black/30 p-1 rounded-xl border border-white/5 text-xs">
+                    <button
+                      onClick={() => setCitizenReportFilter('mine')}
+                      className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                        citizenReportFilter === 'mine' ? 'bg-primary text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Mis Reportes
+                    </button>
+                    <button
+                      onClick={() => setCitizenReportFilter('all')}
+                      className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                        citizenReportFilter === 'all' ? 'bg-primary text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Reportes del Barrio
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={loadData}
+                    className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5 bg-cardLight px-3.5 py-2.5 rounded-xl border border-white/5"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Actualizar
+                  </button>
+                </div>
               </div>
 
-              {myReports.length === 0 ? (
+              {/* Lista Filtrada */}
+              {((citizenReportFilter === 'mine' ? myReports : reports).length === 0) ? (
                 <div className="text-center py-16 flex flex-col items-center gap-4">
                   <div className="p-4 rounded-2xl bg-cardLight/50 border border-white/5">
                     <ClipboardList className="h-10 w-10 text-gray-500" />
                   </div>
                   <div>
-                    <p className="text-sm text-gray-300 font-semibold">No tienes reportes registrados</p>
-                    <p className="text-xs text-gray-500 mt-1">Crea tu primer reporte desde la pestaña &quot;Nuevo Reporte&quot;</p>
+                    <p className="text-sm text-gray-300 font-semibold">No se encontraron reportes</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {citizenReportFilter === 'mine' 
+                        ? 'Crea tu primer reporte desde la pestaña "Nuevo Reporte".' 
+                        : 'No hay reportes activos registrados por vecinos.'}
+                    </p>
                   </div>
                 </div>
               ) : (
                 <div className="grid gap-4">
-                  {myReports.map((report) => (
-                    <div key={report.id} className="bg-cardLight/50 border border-white/5 rounded-xl p-5 flex gap-5 items-start hover:border-white/10 transition-all">
-                      {/* Imagen */}
-                      <div className="w-24 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-black/30 border border-white/5">
-                        <img src={report.imageUrl} alt="" className="object-cover w-full h-full" />
-                      </div>
+                  {(citizenReportFilter === 'mine' ? myReports : reports).map((report) => {
+                    const alreadySupported = report.supportedBy?.includes(user.email.toLowerCase());
+                    const isOwnReport = report.citizenEmail?.toLowerCase() === user.email.toLowerCase();
 
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-1.5">
-                          <span className="text-xs font-bold text-white uppercase">{report.category}</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${statusBadge(report.status)}`}>
-                            {report.status.replace('_', ' ')}
-                          </span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
-                            report.priority === 'CRITICA' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                            report.priority === 'ALTA' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
-                            'bg-gray-500/10 text-gray-400 border-gray-500/20'
-                          }`}>
-                            {report.priority}
-                          </span>
+                    return (
+                      <div key={report.id} className="bg-cardLight/50 border border-white/5 rounded-xl p-5 flex flex-col sm:flex-row gap-5 items-start hover:border-white/10 transition-all">
+                        {/* Imagen */}
+                        <div className="w-24 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-black/30 border border-white/5 self-center sm:self-start">
+                          <img src={getImageUrl(report.imageUrl)} alt="" className="object-cover w-full h-full" />
                         </div>
-                        <p className="text-xs text-gray-300 truncate">{report.description}</p>
-                        <div className="flex items-center gap-4 mt-2 text-[10px] text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            {report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {new Date(report.createdAt).toLocaleString()}
-                          </span>
+
+                        {/* Info */}
+                        <div className="flex-1 min-w-0 w-full">
+                          <div className="flex flex-wrap items-center gap-3 mb-1.5">
+                            <span className="text-xs font-bold text-white uppercase">{report.category}</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${statusBadge(report.status)}`}>
+                              {report.status.replace('_', ' ')}
+                            </span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
+                              report.priority === 'CRITICA' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                              report.priority === 'ALTA' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                              'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                            }`}>
+                              {report.priority}
+                            </span>
+                            
+                            {/* Mostrar upvotes */}
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                              <Flame className="h-3 w-3 fill-amber-400" />
+                              {report.upvotes || 0} apoyos
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-300 mb-2">{report.description}</p>
+                          <div className="flex items-center gap-4 text-[10px] text-gray-500 font-sans">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {new Date(report.createdAt).toLocaleString()}
+                            </span>
+                          </div>
                         </div>
+
+                        {/* Botón de Votación / Apoyo Vecinal */}
+                        {!isOwnReport && (
+                          <button
+                            onClick={() => {
+                              supportReport(report.id, user.email);
+                              loadData();
+                            }}
+                            disabled={alreadySupported}
+                            className={`w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border uppercase ${
+                              alreadySupported 
+                                ? 'bg-green-500/10 text-green-400 border-green-500/20 cursor-default' 
+                                : 'bg-primary hover:bg-primary-dark text-white border-primary/20 shadow-lg shadow-primary/10'
+                            }`}
+                          >
+                            <Flame className={`h-4.5 w-4.5 ${alreadySupported ? 'fill-green-400' : ''}`} />
+                            <span>{alreadySupported ? 'Apoyado' : 'Apoyar'}</span>
+                          </button>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1127,7 +1377,7 @@ export default function AppContainer() {
 
                     <div className="rounded-xl overflow-hidden h-40 relative bg-black/30 border border-white/5">
                       <img 
-                        src={selectedReport.imageUrl} 
+                        src={getImageUrl(selectedReport.imageUrl)} 
                         alt={selectedReport.category} 
                         className="object-cover w-full h-full"
                         onError={(e) => {

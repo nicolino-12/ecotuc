@@ -24,6 +24,15 @@ export default function ReportsTable({
   const [obsText, setObsText] = useState<string>('');
   const [selectedCrew, setSelectedCrew] = useState<string>('');
 
+  const getImageUrl = (url: string) => {
+    if (!url) return 'https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=600&auto=format&fit=crop';
+    if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    const cleanBackendUrl = backendUrl.replace('/api', '');
+    return `${cleanBackendUrl}${url}`;
+  };
+
   // Filtrado de reportes
   const filtered = reports.filter(r => {
     const matchCat = filterCategory === 'ALL' || r.category === filterCategory;
@@ -182,7 +191,7 @@ export default function ReportsTable({
                 <td className="py-3 px-4">
                   <div className="h-10 w-10 rounded-lg overflow-hidden bg-black/40 border border-white/5">
                     <img 
-                      src={report.imageUrl} 
+                      src={getImageUrl(report.imageUrl)} 
                       alt="" 
                       className="object-cover h-full w-full"
                       onError={(e) => {
@@ -285,7 +294,7 @@ export default function ReportsTable({
             <div className="flex gap-4">
               <div className="h-16 w-16 rounded-lg overflow-hidden bg-black/40 border border-white/5 flex-shrink-0">
                 <img 
-                  src={activeReport.imageUrl} 
+                  src={getImageUrl(activeReport.imageUrl)} 
                   alt="" 
                   className="object-cover h-full w-full"
                   onError={(e) => {

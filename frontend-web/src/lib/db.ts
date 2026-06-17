@@ -13,7 +13,7 @@ const STORAGE_KEYS = {
   DB_VERSION: 'ecotuc_db_version',
 } as const;
 
-const CURRENT_DB_VERSION = '3';
+const CURRENT_DB_VERSION = '4';
 
 // ===== TIPOS =====
 
@@ -32,6 +32,8 @@ export interface Report {
   createdAt: string;
   citizenEmail?: string;
   citizenName?: string;
+  upvotes?: number;
+  supportedBy?: string[];
 }
 
 export interface Crew {
@@ -125,6 +127,8 @@ const SEED_REPORTS: Report[] = [
     createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
     citizenEmail: 'vecino1@gmail.com',
     citizenName: 'Carlos Ruiz',
+    upvotes: 8,
+    supportedBy: ['vecino2@gmail.com', 'ciudadano1@gmail.com'],
   },
   {
     id: 'seed_2',
@@ -141,6 +145,8 @@ const SEED_REPORTS: Report[] = [
     createdAt: new Date(Date.now() - 3600000 * 8).toISOString(),
     citizenEmail: 'vecino2@gmail.com',
     citizenName: 'Ana López',
+    upvotes: 3,
+    supportedBy: ['vecino1@gmail.com'],
   },
   {
     id: 'seed_3',
@@ -157,6 +163,8 @@ const SEED_REPORTS: Report[] = [
     createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
     citizenEmail: 'vecino3@gmail.com',
     citizenName: 'Roberto Díaz',
+    upvotes: 5,
+    supportedBy: ['vecino1@gmail.com', 'vecino2@gmail.com'],
   },
 ];
 
@@ -404,6 +412,42 @@ export function saveAllReports(reports: Report[]): void {
 export function saveAllCrews(crews: Crew[]): void {
   if (!isClient()) return;
   localStorage.setItem(STORAGE_KEYS.CREWS, JSON.stringify(crews));
+}
+
+/** Apoya/vota un reporte de un vecino. Incrementa votos y actualiza prioridad */
+export function supportReport(id: string, email: string): Report | null {
+  const reports = getAllReports();
+  const index = reports.findIndex((r) => r.id === id);
+  if (index === -1) return null;
+
+  const report = reports[index];
+  const supportedBy = report.supportedBy || [];
+
+  // Evitar duplicación de votos por el mismo email
+  if (supportedBy.includes(email.toLowerCase())) return report;
+
+  supportedBy.push(email.toLowerCase());
+  report.supportedBy = supportedBy;
+  report.upvotes = (report.upvotes || 0) + 1;
+
+  // Modificar prioridad: cada voto incrementa 5 puntos de Score
+  report.priorityScore = (report.priorityScore || 50) + 5;
+  if (report.priorityScore > 100) report.priorityScore = 100;
+
+  // Recalcular etiqueta de prioridad basada en el nuevo score
+  if (report.priorityScore >= 90) {
+    report.priority = 'CRITICA';
+  } else if (report.priorityScore >= 70) {
+    report.priority = 'ALTA';
+  } else if (report.priorityScore >= 40) {
+    report.priority = 'MEDIA';
+  } else {
+    report.priority = 'BAJA';
+  }
+
+  reports[index] = report;
+  localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(reports));
+  return report;
 }
 
 /** Resetea la base de datos a los datos semilla */

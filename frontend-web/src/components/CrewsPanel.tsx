@@ -23,6 +23,102 @@ export default function CrewsPanel({
   const [activeRoute, setActiveRoute] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // Estados para creación de cuadrilla
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newCrewName, setNewCrewName] = useState('');
+  const [newCrewPlate, setNewCrewPlate] = useState('');
+  const [newCrewDriver, setNewCrewDriver] = useState('');
+  const [newCrewCollector, setNewCrewCollector] = useState('');
+  const [isCreatingCrew, setIsCreatingCrew] = useState(false);
+
+  const handleCreateCrew = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCrewName.trim() || !newCrewPlate.trim()) {
+      alert('El nombre y la patente son obligatorios.');
+      return;
+    }
+    setIsCreatingCrew(true);
+
+    if (apiOnline) {
+      try {
+        const res = await fetch(`${backendUrl}/crews`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newCrewName.trim(),
+            vehiclePlate: newCrewPlate.trim()
+          })
+        });
+
+        if (res.ok) {
+          const createdCrew = await res.json();
+          
+          // Agregar miembros si se especificaron
+          if (newCrewDriver.trim()) {
+            await fetch(`${backendUrl}/crews/${createdCrew.id}/members`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fullName: newCrewDriver.trim(), role: 'CHOFER' })
+            });
+          }
+          if (newCrewCollector.trim()) {
+            await fetch(`${backendUrl}/crews/${createdCrew.id}/members`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fullName: newCrewCollector.trim(), role: 'RECOLECTOR' })
+            });
+          }
+
+          // Recargar datos
+          onRouteGenerated();
+          // Resetear form
+          setNewCrewName('');
+          setNewCrewPlate('');
+          setNewCrewDriver('');
+          setNewCrewCollector('');
+          setShowCreateForm(false);
+        } else {
+          const err = await res.json();
+          alert(err.message || 'Error al crear cuadrilla.');
+        }
+      } catch (e) {
+        console.error('Error al crear cuadrilla:', e);
+      }
+    } else {
+      // Modo local/offline
+      const newId = `c_${Date.now()}`;
+      const members: any[] = [];
+      if (newCrewDriver.trim()) {
+        members.push({ fullName: newCrewDriver.trim(), role: 'CHOFER' });
+      }
+      if (newCrewCollector.trim()) {
+        members.push({ fullName: newCrewCollector.trim(), role: 'RECOLECTOR' });
+      }
+
+      const newCrew = {
+        id: newId,
+        name: newCrewName.trim(),
+        vehiclePlate: newCrewPlate.trim(),
+        status: 'ACTIVA',
+        latitude: -26.828372,
+        longitude: -65.222312,
+        members
+      };
+
+      const updatedCrews = [...crews, newCrew];
+      if (onLocalUpdate) {
+        onLocalUpdate(updatedCrews, reports);
+      }
+
+      setNewCrewName('');
+      setNewCrewPlate('');
+      setNewCrewDriver('');
+      setNewCrewCollector('');
+      setShowCreateForm(false);
+    }
+    setIsCreatingCrew(false);
+  };
+
   // Filtrar reportes elegibles para ser limpiados (Pendientes o En Revisión)
   const assignableReports = reports.filter(r => ['PENDIENTE', 'EN_REVISION'].includes(r.status));
 
@@ -235,10 +331,88 @@ export default function CrewsPanel({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* 1. Panel de Cuadrillas */}
       <div className="glass-card p-6 rounded-2xl flex flex-col gap-4">
-        <h3 className="text-lg font-bold text-white flex items-center gap-2">
-          <Users className="h-5 w-5 text-primary" />
-          Cuadrillas Activas
-        </h3>
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            Cuadrillas Activas
+          </h3>
+          <button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-lg text-xs font-semibold transition-all border border-primary/20"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Crear
+          </button>
+        </div>
+
+        {showCreateForm && (
+          <form onSubmit={handleCreateCrew} className="p-4 rounded-xl bg-black/20 border border-white/5 flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+            <span className="text-[10px] text-primary font-bold uppercase tracking-wider">Nueva Cuadrilla</span>
+            
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-gray-400">Nombre de Cuadrilla *</label>
+              <input 
+                type="text" 
+                placeholder="Ej: Cuadrilla Centro - Camión 03"
+                value={newCrewName}
+                onChange={e => setNewCrewName(e.target.value)}
+                className="bg-cardLight border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-gray-400">Patente del Vehículo *</label>
+              <input 
+                type="text" 
+                placeholder="Ej: AD-456-OP"
+                value={newCrewPlate}
+                onChange={e => setNewCrewPlate(e.target.value)}
+                className="bg-cardLight border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-gray-400">Nombre del Chofer (Opcional)</label>
+              <input 
+                type="text" 
+                placeholder="Nombre completo"
+                value={newCrewDriver}
+                onChange={e => setNewCrewDriver(e.target.value)}
+                className="bg-cardLight border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-gray-400">Nombre del Recolector (Opcional)</label>
+              <input 
+                type="text" 
+                placeholder="Nombre completo"
+                value={newCrewCollector}
+                onChange={e => setNewCrewCollector(e.target.value)}
+                className="bg-cardLight border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"
+              />
+            </div>
+
+            <div className="flex gap-2 mt-1">
+              <button 
+                type="submit"
+                disabled={isCreatingCrew}
+                className="flex-1 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-primary/10"
+              >
+                {isCreatingCrew ? 'Creando...' : 'Confirmar'}
+              </button>
+              <button 
+                type="button"
+                onClick={() => setShowCreateForm(false)}
+                className="px-3 py-2 bg-cardLight hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg text-xs font-semibold border border-white/5"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        )}
 
         <div className="flex flex-col gap-3 mt-2">
           {crews.map(crew => (

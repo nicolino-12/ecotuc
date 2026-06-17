@@ -143,6 +143,28 @@ export default function ReportsTable({
     }
   };
 
+  const handleDeleteClick = async (report: any) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar este reporte?')) return;
+
+    if (apiOnline) {
+      try {
+        const res = await fetch(`${backendUrl}/reports/${report.id}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          onReportUpdated();
+        }
+      } catch (e) {
+        console.error('Error al eliminar reporte:', e);
+      }
+    } else {
+      const updatedReports = reports.filter(r => r.id !== report.id);
+      if (onLocalUpdate) {
+        onLocalUpdate(updatedReports);
+      }
+    }
+  };
+
   return (
     <div className="glass-card p-6 rounded-2xl flex flex-col gap-6">
       {/* Cabecera y Filtros */}
@@ -284,6 +306,13 @@ export default function ReportsTable({
                       className="p-1.5 bg-cardLight hover:bg-gray-700 text-gray-300 rounded-lg transition-all border border-white/5"
                     >
                       <Edit className="h-3.5 w-3.5" />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteClick(report)}
+                      title="Eliminar Reporte"
+                      className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-lg transition-all border border-red-500/20"
+                    >
+                      <Trash className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </td>

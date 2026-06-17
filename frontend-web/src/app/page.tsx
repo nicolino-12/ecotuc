@@ -275,6 +275,29 @@ export default function AppContainer() {
     setAuthError(null);
   };
 
+  const handleDeleteReport = async (reportId: string) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar tu reporte?')) return;
+
+    if (apiOnline) {
+      try {
+        const res = await fetch(`${backendUrl}/reports/${reportId}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          loadData();
+        }
+      } catch (e) {
+        console.error('Error al eliminar reporte:', e);
+      }
+    } else {
+      // Flujo local
+      const updatedReports = reports.filter(r => r.id !== reportId);
+      setReports(updatedReports);
+      saveAllReports(updatedReports);
+      setStats(getReportStats());
+    }
+  };
+
   // Buscar dirección con Nominatim
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
 
@@ -1223,6 +1246,16 @@ export default function AppContainer() {
                           >
                             <Flame className={`h-4.5 w-4.5 ${alreadySupported ? 'fill-green-400' : ''}`} />
                             <span>{alreadySupported ? 'Apoyado' : 'Apoyar'}</span>
+                          </button>
+                        )}
+
+                        {isOwnReport && (
+                          <button
+                            onClick={() => handleDeleteReport(report.id)}
+                            className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-red-500/20 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white uppercase"
+                          >
+                            <Trash2 className="h-4.5 w-4.5" />
+                            <span>Eliminar</span>
                           </button>
                         )}
                       </div>

@@ -111,62 +111,7 @@ const SEED_USERS: RegisteredUser[] = [
   },
 ];
 
-const SEED_REPORTS: Report[] = [
-  {
-    id: 'seed_1',
-    category: 'BASURAL',
-    description: 'Acumulación masiva de basura en la esquina del hospital. Olor insoportable y presencia de roedores.',
-    imageUrl: 'https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=600&auto=format&fit=crop',
-    latitude: -26.818500,
-    longitude: -65.210600,
-    priority: 'CRITICA',
-    priorityScore: 95.5,
-    status: 'PENDIENTE',
-    crewId: null,
-    observations: null,
-    createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-    citizenEmail: 'vecino1@gmail.com',
-    citizenName: 'Carlos Ruiz',
-    upvotes: 8,
-    supportedBy: ['vecino2@gmail.com', 'ciudadano1@gmail.com'],
-  },
-  {
-    id: 'seed_2',
-    category: 'ESCOMBROS',
-    description: 'Restos de obra abandonados sobre la vereda que obligan a los alumnos a caminar por la calle.',
-    imageUrl: 'https://images.unsplash.com/photo-1590086782792-4f9f9743479f?w=600&auto=format&fit=crop',
-    latitude: -26.826000,
-    longitude: -65.204800,
-    priority: 'ALTA',
-    priorityScore: 78.2,
-    status: 'PENDIENTE',
-    crewId: null,
-    observations: null,
-    createdAt: new Date(Date.now() - 3600000 * 8).toISOString(),
-    citizenEmail: 'vecino2@gmail.com',
-    citizenName: 'Ana López',
-    upvotes: 3,
-    supportedBy: ['vecino1@gmail.com'],
-  },
-  {
-    id: 'seed_3',
-    category: 'ALCANTARILLA',
-    description: 'Alcantarilla completamente tapada con botellas plásticas. Inunda la calle cuando llueve.',
-    imageUrl: 'https://images.unsplash.com/photo-1542060748-10c28b629f6f?w=600&auto=format&fit=crop',
-    latitude: -26.829300,
-    longitude: -65.234300,
-    priority: 'ALTA',
-    priorityScore: 82.0,
-    status: 'ASIGNADO',
-    crewId: 'c1',
-    observations: 'Asignado a cuadrilla para despeje de pluviales.',
-    createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
-    citizenEmail: 'vecino3@gmail.com',
-    citizenName: 'Roberto Díaz',
-    upvotes: 5,
-    supportedBy: ['vecino1@gmail.com', 'vecino2@gmail.com'],
-  },
-];
+const SEED_REPORTS: Report[] = [];
 
 const SEED_CREWS: Crew[] = [
   {

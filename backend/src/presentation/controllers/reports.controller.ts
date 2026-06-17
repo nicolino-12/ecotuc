@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Body, Query, Param, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Put, Delete, Body, Query, Param, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DataSource } from 'typeorm';
@@ -228,5 +228,17 @@ export class ReportsController {
 
     await reportRepo.save(report);
     return report;
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Eliminar un reporte por ID' })
+  async deleteReport(@Param('id') id: string) {
+    const reportRepo = this.dataSource.getRepository(ReportEntity);
+    const report = await reportRepo.findOne({ where: { id } });
+    if (!report) {
+      throw new BadRequestException('Reporte no encontrado.');
+    }
+    await reportRepo.remove(report);
+    return { success: true };
   }
 }

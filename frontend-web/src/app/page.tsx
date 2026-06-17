@@ -108,20 +108,7 @@ export default function AppContainer() {
   const [citizenReportFilter, setCitizenReportFilter] = useState<'mine' | 'all'>('mine');
 
   // Filtros globales de métricas para el dashboard de operador
-  const [metricFilter, setMetricFilter] = useState<'ALL' | 'OPEN' | 'CLOSED' | 'URGENT'>('ALL');
-
-  const filteredReportsData = React.useMemo(() => {
-    switch (metricFilter) {
-      case 'OPEN':
-        return reports.filter(r => ['PENDIENTE', 'EN_REVISION', 'ASIGNADO', 'EN_PROCESO'].includes(r.status));
-      case 'CLOSED':
-        return reports.filter(r => ['RESUELTO', 'RECHAZADO'].includes(r.status));
-      case 'URGENT':
-        return reports.filter(r => ['CRITICA', 'ALTA'].includes(r.priority));
-      default:
-        return reports;
-    }
-  }, [reports, metricFilter]);
+  const [metricFilter, setMetricFilter] = useState<string>('ALL');
 
   const categoryDistribution = React.useMemo(() => {
     const counts: Record<string, number> = {
@@ -132,7 +119,7 @@ export default function AppContainer() {
       OTROS: 0,
     };
     
-    filteredReportsData.forEach(r => {
+    reports.forEach(r => {
       if (counts[r.category] !== undefined) {
         counts[r.category]++;
       } else {
@@ -140,14 +127,14 @@ export default function AppContainer() {
       }
     });
 
-    const total = filteredReportsData.length || 1;
+    const total = reports.length || 1;
 
     return Object.entries(counts).map(([cat, val]) => ({
       category: cat,
       count: val,
       percentage: (val / total) * 100
     })).sort((a, b) => b.count - a.count);
-  }, [filteredReportsData]);
+  }, [reports]);
 
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
@@ -1322,7 +1309,7 @@ export default function AppContainer() {
             setMetricFilter('OPEN');
           }}
           className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all ${
-            metricFilter === 'OPEN' && activeTab === 'table'
+            ['OPEN', 'PENDIENTE', 'ASIGNADO', 'EN_PROCESO'].includes(metricFilter) && activeTab === 'table'
               ? 'ring-2 ring-amber-500 bg-amber-500/5 shadow-lg shadow-amber-500/10 scale-[1.02] border-amber-500/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
           }`}
@@ -1342,7 +1329,7 @@ export default function AppContainer() {
             setMetricFilter('CLOSED');
           }}
           className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all ${
-            metricFilter === 'CLOSED' && activeTab === 'table'
+            ['CLOSED', 'RESUELTO', 'RECHAZADO'].includes(metricFilter) && activeTab === 'table'
               ? 'ring-2 ring-green-500 bg-green-500/5 shadow-lg shadow-green-500/10 scale-[1.02] border-green-500/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
           }`}
@@ -1452,7 +1439,12 @@ export default function AppContainer() {
                 Filtro activo desde el panel superior: Mostrando únicamente <strong>{
                   metricFilter === 'OPEN' ? 'Reportes Abiertos' :
                   metricFilter === 'CLOSED' ? 'Reportes Resueltos / Cerrados' :
-                  metricFilter === 'URGENT' ? 'Reportes Urgentes' : ''
+                  metricFilter === 'URGENT' ? 'Reportes Urgentes' :
+                  metricFilter === 'PENDIENTE' ? 'Reportes Pendientes' :
+                  metricFilter === 'ASIGNADO' ? 'Reportes Asignados' :
+                  metricFilter === 'EN_PROCESO' ? 'Reportes En Proceso' :
+                  metricFilter === 'RESUELTO' ? 'Reportes Resueltos' :
+                  metricFilter === 'RECHAZADO' ? 'Reportes Rechazados' : metricFilter
                 }</strong>.
               </span>
             </div>
@@ -1471,7 +1463,7 @@ export default function AppContainer() {
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               <div className="lg:col-span-3">
                 <MapDashboard 
-                  reports={filteredReportsData} 
+                  reports={reports} 
                   crews={crews} 
                   onSelectReport={(rep) => setSelectedReport(rep)}
                   selectedReport={selectedReport}
@@ -1606,7 +1598,7 @@ export default function AppContainer() {
           {activeTab === 'crews' && (
             <CrewsPanel 
               crews={crews} 
-              reports={filteredReportsData} 
+              reports={reports} 
               backendUrl={backendUrl}
               onRouteGenerated={loadData}
               apiOnline={apiOnline}
@@ -1623,11 +1615,13 @@ export default function AppContainer() {
 
           {activeTab === 'table' && (
             <ReportsTable 
-              reports={filteredReportsData} 
+              reports={reports} 
               crews={crews}
               backendUrl={backendUrl}
               onReportUpdated={loadData}
               apiOnline={apiOnline}
+              statusFilter={metricFilter}
+              setStatusFilter={setMetricFilter}
               onLocalUpdate={(updatedReports) => {
                 setReports(updatedReports);
                 // Persistir en DB local

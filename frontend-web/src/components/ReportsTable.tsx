@@ -13,16 +13,22 @@ interface ReportsTableProps {
   onReportUpdated: () => void;
   apiOnline: boolean;
   onLocalUpdate?: (reports: any[]) => void;
+  statusFilter?: string;
+  setStatusFilter?: (status: string) => void;
 }
 
 export default function ReportsTable({ 
-  reports, crews, backendUrl, onReportUpdated, apiOnline, onLocalUpdate 
+  reports, crews, backendUrl, onReportUpdated, apiOnline, onLocalUpdate,
+  statusFilter, setStatusFilter
 }: ReportsTableProps) {
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
-  const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [localFilterStatus, setLocalFilterStatus] = useState<string>('ALL');
   const [activeReport, setActiveReport] = useState<any>(null);
   const [obsText, setObsText] = useState<string>('');
   const [selectedCrew, setSelectedCrew] = useState<string>('');
+
+  const filterStatus = statusFilter !== undefined ? statusFilter : localFilterStatus;
+  const setFilterStatus = setStatusFilter !== undefined ? setStatusFilter : setLocalFilterStatus;
 
   const getImageUrl = (url: string) => {
     if (!url) return 'https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=600&auto=format&fit=crop';
@@ -36,7 +42,20 @@ export default function ReportsTable({
   // Filtrado de reportes
   const filtered = reports.filter(r => {
     const matchCat = filterCategory === 'ALL' || r.category === filterCategory;
-    const matchStatus = filterStatus === 'ALL' || r.status === filterStatus;
+    
+    let matchStatus = true;
+    if (filterStatus === 'ALL') {
+      matchStatus = true;
+    } else if (filterStatus === 'OPEN') {
+      matchStatus = ['PENDIENTE', 'EN_REVISION', 'ASIGNADO', 'EN_PROCESO'].includes(r.status);
+    } else if (filterStatus === 'CLOSED') {
+      matchStatus = ['RESUELTO', 'RECHAZADO'].includes(r.status);
+    } else if (filterStatus === 'URGENT') {
+      matchStatus = ['CRITICA', 'ALTA'].includes(r.priority);
+    } else {
+      matchStatus = r.status === filterStatus;
+    }
+    
     return matchCat && matchStatus;
   });
 
@@ -161,11 +180,14 @@ export default function ReportsTable({
               className="bg-transparent text-xs text-gray-200 focus:outline-none cursor-pointer"
             >
               <option value="ALL">Todos los Estados</option>
-              <option value="PENDIENTE">Pendiente</option>
-              <option value="ASIGNADO">Asignado</option>
-              <option value="EN_PROCESO">En Proceso</option>
-              <option value="RESUELTO">Resuelto</option>
-              <option value="RECHAZADO">Rechazado</option>
+              <option value="OPEN">Abiertos (Pendientes / En Proceso)</option>
+              <option value="CLOSED">Resueltos / Cerrados</option>
+              <option value="URGENT">Urgentes (Prioridad Alta / Crítica)</option>
+              <option value="PENDIENTE">Solo Pendientes</option>
+              <option value="ASIGNADO">Solo Asignados</option>
+              <option value="EN_PROCESO">Solo En Proceso</option>
+              <option value="RESUELTO">Solo Resueltos</option>
+              <option value="RECHAZADO">Solo Rechazados</option>
             </select>
           </div>
         </div>

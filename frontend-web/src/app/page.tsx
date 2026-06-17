@@ -107,6 +107,22 @@ export default function AppContainer() {
   const [citizenView, setCitizenView] = useState<'new' | 'my_reports'>('new');
   const [citizenReportFilter, setCitizenReportFilter] = useState<'mine' | 'all'>('mine');
 
+  // Filtros globales de métricas para el dashboard de operador
+  const [metricFilter, setMetricFilter] = useState<'ALL' | 'OPEN' | 'CLOSED' | 'URGENT'>('ALL');
+
+  const filteredReportsData = React.useMemo(() => {
+    switch (metricFilter) {
+      case 'OPEN':
+        return reports.filter(r => ['PENDIENTE', 'EN_REVISION', 'ASIGNADO', 'EN_PROCESO'].includes(r.status));
+      case 'CLOSED':
+        return reports.filter(r => ['RESUELTO', 'RECHAZADO'].includes(r.status));
+      case 'URGENT':
+        return reports.filter(r => ['CRITICA', 'ALTA'].includes(r.priority));
+      default:
+        return reports;
+    }
+  }, [reports, metricFilter]);
+
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
   const getImageUrl = (url: string) => {
@@ -523,8 +539,8 @@ export default function AppContainer() {
         <div className="max-w-md w-full glass-panel p-8 rounded-3xl border border-white/5 flex flex-col gap-6 relative z-10 shadow-2xl transition-all duration-300">
           {/* Logo */}
           <div className="text-center flex flex-col items-center gap-2">
-            <div className="bg-primary p-3 rounded-2xl glow-green flex items-center justify-center mb-1">
-              <Trash2 className="h-7 w-7 text-white" />
+            <div className="relative w-16 h-16 rounded-2xl overflow-hidden border border-white/10 shadow-lg glow-green flex items-center justify-center mb-1 bg-black/20">
+              <img src="/logo.png" alt="EcoTuc Logo" className="object-cover w-full h-full" />
             </div>
             <h2 className="text-2xl font-bold tracking-tight text-white">EcoTuc</h2>
             <p className="text-xs text-gray-400">Sistema Inteligente para Reportes y Recolección Urbana</p>
@@ -770,8 +786,8 @@ export default function AppContainer() {
         {/* Navbar Ciudadano */}
         <header className="w-full glass-panel sticky top-0 z-40 border-b border-white/5 py-4 px-6 md:px-12 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="bg-primary p-2.5 rounded-xl glow-green flex items-center justify-center">
-              <Trash2 className="h-6 w-6 text-white" />
+            <div className="relative w-11 h-11 rounded-xl overflow-hidden border border-white/10 shadow-lg glow-green flex items-center justify-center bg-black/20">
+              <img src="/logo.png" alt="EcoTuc Logo" className="object-cover w-full h-full" />
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-white">EcoTuc Ciudadano</h1>
@@ -1208,8 +1224,8 @@ export default function AppContainer() {
       {/* Navbar Superior */}
       <header className="w-full glass-panel sticky top-0 z-40 border-b border-white/5 py-4 px-6 md:px-12 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="bg-primary p-2.5 rounded-xl glow-green flex items-center justify-center">
-            <Trash2 className="h-6 w-6 text-white" />
+          <div className="relative w-11 h-11 rounded-xl overflow-hidden border border-white/10 shadow-lg glow-green flex items-center justify-center bg-black/20">
+            <img src="/logo.png" alt="EcoTuc Logo" className="object-cover w-full h-full" />
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
@@ -1246,7 +1262,17 @@ export default function AppContainer() {
 
       {/* Grid de Métricas Principales */}
       <section className="p-6 md:px-12 grid grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
-        <div className="glass-card p-5 rounded-2xl flex items-center gap-4">
+        <button
+          onClick={() => {
+            setActiveTab('table');
+            setMetricFilter('ALL');
+          }}
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all ${
+            metricFilter === 'ALL' && activeTab === 'table'
+              ? 'ring-2 ring-primary bg-primary/5 shadow-lg shadow-primary/10 scale-[1.02] border-primary/30'
+              : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
+          }`}
+        >
           <div className="p-3 rounded-xl bg-gray-500/10 text-gray-400">
             <ClipboardList className="h-6 w-6" />
           </div>
@@ -1254,9 +1280,19 @@ export default function AppContainer() {
             <div className="text-2xl font-bold text-white">{stats.total}</div>
             <div className="text-xs text-gray-400">Total de Reportes</div>
           </div>
-        </div>
+        </button>
 
-        <div className="glass-card p-5 rounded-2xl flex items-center gap-4">
+        <button
+          onClick={() => {
+            setActiveTab('table');
+            setMetricFilter('OPEN');
+          }}
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all ${
+            metricFilter === 'OPEN' && activeTab === 'table'
+              ? 'ring-2 ring-amber-500 bg-amber-500/5 shadow-lg shadow-amber-500/10 scale-[1.02] border-amber-500/30'
+              : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
+          }`}
+        >
           <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400">
             <Clock className="h-6 w-6" />
           </div>
@@ -1264,9 +1300,19 @@ export default function AppContainer() {
             <div className="text-2xl font-bold text-white">{stats.open}</div>
             <div className="text-xs text-gray-400">Reportes Abiertos</div>
           </div>
-        </div>
+        </button>
 
-        <div className="glass-card p-5 rounded-2xl flex items-center gap-4">
+        <button
+          onClick={() => {
+            setActiveTab('table');
+            setMetricFilter('CLOSED');
+          }}
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all ${
+            metricFilter === 'CLOSED' && activeTab === 'table'
+              ? 'ring-2 ring-green-500 bg-green-500/5 shadow-lg shadow-green-500/10 scale-[1.02] border-green-500/30'
+              : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
+          }`}
+        >
           <div className="p-3 rounded-xl bg-primary/10 text-primary">
             <CheckCircle className="h-6 w-6" />
           </div>
@@ -1274,9 +1320,19 @@ export default function AppContainer() {
             <div className="text-2xl font-bold text-white">{stats.closed}</div>
             <div className="text-xs text-gray-400">Resueltos / Cerrados</div>
           </div>
-        </div>
+        </button>
 
-        <div className="glass-card p-5 rounded-2xl flex items-center gap-4 relative overflow-hidden group">
+        <button
+          onClick={() => {
+            setActiveTab('table');
+            setMetricFilter('URGENT');
+          }}
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative overflow-hidden group ${
+            metricFilter === 'URGENT' && activeTab === 'table'
+              ? 'ring-2 ring-red-500 bg-red-500/5 shadow-lg shadow-red-500/10 scale-[1.02] border-red-500/30'
+              : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
+          }`}
+        >
           <div className="absolute top-0 right-0 h-full w-1.5 bg-red-500"></div>
           <div className="p-3 rounded-xl bg-red-500/10 text-red-400">
             <AlertTriangle className="h-6 w-6" />
@@ -1288,9 +1344,19 @@ export default function AppContainer() {
             </div>
             <div className="text-xs text-gray-400">Reportes Urgentes</div>
           </div>
-        </div>
+        </button>
 
-        <div className="glass-card p-5 rounded-2xl flex items-center gap-4">
+        <button
+          onClick={() => {
+            setActiveTab('crews');
+            setMetricFilter('ALL');
+          }}
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all ${
+            activeTab === 'crews'
+              ? 'ring-2 ring-accent-blue bg-accent-blue/5 shadow-lg shadow-accent-blue/10 scale-[1.02] border-accent-blue/30'
+              : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
+          }`}
+        >
           <div className="p-3 rounded-xl bg-accent-blue/10 text-accent-blue">
             <Users className="h-6 w-6" />
           </div>
@@ -1298,7 +1364,7 @@ export default function AppContainer() {
             <div className="text-2xl font-bold text-white">{stats.activeCrews}</div>
             <div className="text-xs text-gray-400">Cuadrillas Activas</div>
           </div>
-        </div>
+        </button>
       </section>
 
       {/* Tabs y Panel de Control Principal */}
@@ -1343,13 +1409,35 @@ export default function AppContainer() {
           </button>
         </div>
 
+        {/* Banner de Filtro Activo */}
+        {activeTab === 'table' && metricFilter !== 'ALL' && (
+          <div className="bg-primary/10 border border-primary/20 p-3 rounded-xl flex items-center justify-between text-xs text-gray-300 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-2">
+              <Info className="h-4 w-4 text-primary" />
+              <span>
+                Filtro activo desde el panel superior: Mostrando únicamente <strong>{
+                  metricFilter === 'OPEN' ? 'Reportes Abiertos' :
+                  metricFilter === 'CLOSED' ? 'Reportes Resueltos / Cerrados' :
+                  metricFilter === 'URGENT' ? 'Reportes Urgentes' : ''
+                }</strong>.
+              </span>
+            </div>
+            <button 
+              onClick={() => setMetricFilter('ALL')}
+              className="text-primary font-bold hover:underline bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/20"
+            >
+              Mostrar todos
+            </button>
+          </div>
+        )}
+
         {/* Contenido de la pestaña */}
         <div className="flex-1">
           {activeTab === 'map' && (
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               <div className="lg:col-span-3">
                 <MapDashboard 
-                  reports={reports} 
+                  reports={filteredReportsData} 
                   crews={crews} 
                   onSelectReport={(rep) => setSelectedReport(rep)}
                   selectedReport={selectedReport}
@@ -1437,7 +1525,7 @@ export default function AppContainer() {
           {activeTab === 'crews' && (
             <CrewsPanel 
               crews={crews} 
-              reports={reports} 
+              reports={filteredReportsData} 
               backendUrl={backendUrl}
               onRouteGenerated={loadData}
               apiOnline={apiOnline}
@@ -1454,7 +1542,7 @@ export default function AppContainer() {
 
           {activeTab === 'table' && (
             <ReportsTable 
-              reports={reports} 
+              reports={filteredReportsData} 
               crews={crews}
               backendUrl={backendUrl}
               onReportUpdated={loadData}

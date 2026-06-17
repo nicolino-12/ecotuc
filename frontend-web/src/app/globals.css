@@ -83,3 +83,37 @@ body {
 .glow-amber {
   box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
 }
+
+/* Mesh Gradient / Background floating lights animation */
+@keyframes float-light-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+
+@keyframes float-light-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-40px, 40px) scale(1.05); }
+}
+
+.animate-float-1 {
+  animation: float-light-1 25s ease-in-out infinite;
+}
+
+.animate-float-2 {
+  animation: float-light-2 20s ease-in-out infinite;
+}
+
+/* Premium card active states and glow */
+.glass-card-premium {
+  background: rgba(25, 32, 53, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-premium:hover {
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 20px 40px -15px rgba(16, 185, 129, 0.2), 0 0 15px rgba(16, 185, 129, 0.1);
+  transform: translateY(-4px);
+}

@@ -123,6 +123,32 @@ export default function AppContainer() {
     }
   }, [reports, metricFilter]);
 
+  const categoryDistribution = React.useMemo(() => {
+    const counts: Record<string, number> = {
+      BASURAL: 0,
+      ALCANTARILLA: 0,
+      ESCOMBROS: 0,
+      PELIGROSO: 0,
+      OTROS: 0,
+    };
+    
+    filteredReportsData.forEach(r => {
+      if (counts[r.category] !== undefined) {
+        counts[r.category]++;
+      } else {
+        counts.OTROS++;
+      }
+    });
+
+    const total = filteredReportsData.length || 1;
+
+    return Object.entries(counts).map(([cat, val]) => ({
+      category: cat,
+      count: val,
+      percentage: (val / total) * 100
+    })).sort((a, b) => b.count - a.count);
+  }, [filteredReportsData]);
+
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
   const getImageUrl = (url: string) => {
@@ -532,9 +558,9 @@ export default function AppContainer() {
   if (!user) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
-        {/* Luces de fondo decorativas */}
-        <div className="absolute top-1/4 left-1/4 h-[300px] w-[300px] bg-primary/20 rounded-full blur-3xl text-primary"></div>
-        <div className="absolute bottom-1/4 right-1/4 h-[300px] w-[300px] bg-accent-purple/15 rounded-full blur-3xl text-accent-purple"></div>
+        {/* Luces de fondo decorativas animadas */}
+        <div className="absolute top-1/4 left-1/4 h-[300px] w-[300px] bg-primary/15 rounded-full blur-[100px] text-primary animate-float-1"></div>
+        <div className="absolute bottom-1/4 right-1/4 h-[300px] w-[300px] bg-accent-purple/10 rounded-full blur-[100px] text-accent-purple animate-float-2"></div>
 
         <div className="max-w-md w-full glass-panel p-8 rounded-3xl border border-white/5 flex flex-col gap-6 relative z-10 shadow-2xl transition-all duration-300">
           {/* Logo */}
@@ -782,7 +808,10 @@ export default function AppContainer() {
   // VISTA 2: CITIZEN PORTAL (Si el rol logueado es ciudadano)
   if (user.role === 'CITIZEN') {
     return (
-      <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans">
+      <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans relative overflow-hidden">
+        {/* Luces de fondo animadas premium */}
+        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none animate-float-1"></div>
+        <div className="absolute bottom-[20%] right-[-5%] w-[450px] h-[450px] bg-accent-purple/5 rounded-full blur-[100px] pointer-events-none animate-float-2"></div>
         {/* Navbar Ciudadano */}
         <header className="w-full glass-panel sticky top-0 z-40 border-b border-white/5 py-4 px-6 md:px-12 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -849,10 +878,11 @@ export default function AppContainer() {
           </div>
         )}
 
-        {/* Contenido basado en la vista seleccionada */}
-        {citizenView === 'new' ? (
-          /* ===== FORMULARIO DE NUEVO REPORTE ===== */
-          <main className="flex-1 p-6 md:px-12 grid grid-cols-1 lg:grid-cols-2 gap-8 pb-12">
+        {/* Contenido basado en la vista seleccionada con transiciones fluidas */}
+        <div key={citizenView} className="flex-1 flex flex-col animate-in fade-in-50 slide-in-from-bottom-3 duration-300 ease-out">
+          {citizenView === 'new' ? (
+            /* ===== FORMULARIO DE NUEVO REPORTE ===== */
+            <main className="flex-1 p-6 md:px-12 grid grid-cols-1 lg:grid-cols-2 gap-8 pb-12">
             
             {/* Formulario de Reporte Web */}
             <div className="glass-card p-6 md:p-8 rounded-2xl flex flex-col gap-6">
@@ -1214,13 +1244,17 @@ export default function AppContainer() {
             </div>
           </main>
         )}
+        </div>
       </div>
     );
   }
 
   // VISTA 3: OPERATOR DASHBOARD (Si es operador municipal)
   return (
-    <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans relative overflow-hidden">
+      {/* Luces de fondo animadas premium */}
+      <div className="absolute top-[-10%] left-[-10%] w-[550px] h-[550px] bg-primary/4 rounded-full blur-[130px] pointer-events-none animate-float-1"></div>
+      <div className="absolute bottom-[10%] right-[-5%] w-[500px] h-[500px] bg-accent-purple/4 rounded-full blur-[110px] pointer-events-none animate-float-2"></div>
       {/* Navbar Superior */}
       <header className="w-full glass-panel sticky top-0 z-40 border-b border-white/5 py-4 px-6 md:px-12 flex justify-between items-center">
         <div className="flex items-center gap-3">
@@ -1431,8 +1465,8 @@ export default function AppContainer() {
           </div>
         )}
 
-        {/* Contenido de la pestaña */}
-        <div className="flex-1">
+        {/* Contenido de la pestaña con transiciones de entrada animadas */}
+        <div key={activeTab} className="flex-1 animate-in fade-in-50 slide-in-from-bottom-3 duration-300 ease-out">
           {activeTab === 'map' && (
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               <div className="lg:col-span-3">
@@ -1488,9 +1522,21 @@ export default function AppContainer() {
                         <span className="text-gray-400">Estado:</span>
                         <span className="font-semibold text-white uppercase">{selectedReport.status}</span>
                       </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-400">Score de Prioridad:</span>
-                        <span className="font-semibold text-primary">{selectedReport.priorityScore?.toFixed(1) || '0.0'} / 100</span>
+                      <div className="flex flex-col gap-1.5 pt-1">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-gray-400 font-semibold uppercase tracking-wider text-[10px]">Score de Prioridad:</span>
+                          <span className="font-bold text-white text-sm">{selectedReport.priorityScore?.toFixed(1) || '0.0'} / 100</span>
+                        </div>
+                        <div className="h-2 w-full bg-black/40 rounded-full overflow-hidden border border-white/5 p-[1px]">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              selectedReport.priorityScore >= 85 ? 'bg-gradient-to-r from-orange-500 to-red-500 glow-red' :
+                              selectedReport.priorityScore >= 65 ? 'bg-gradient-to-r from-amber-500 to-orange-500 glow-orange' :
+                              'bg-gradient-to-r from-green-500 to-amber-500 glow-green'
+                            }`}
+                            style={{ width: `${selectedReport.priorityScore || 0}%` }}
+                          ></div>
+                        </div>
                       </div>
                       <div className="flex items-center gap-1 text-xs text-gray-400">
                         <MapPin className="h-3.5 w-3.5" />
@@ -1510,11 +1556,46 @@ export default function AppContainer() {
                     )}
                   </div>
                 ) : (
-                  <div className="glass-card p-6 rounded-2xl flex flex-col items-center justify-center text-center gap-3 h-[400px] border border-dashed border-white/10">
-                    <MapPin className="h-10 w-10 text-gray-500" />
+                  <div className="glass-card p-6 rounded-2xl flex flex-col gap-5 border border-white/5 animate-in fade-in-50 duration-300">
                     <div>
-                      <h4 className="font-semibold text-white">Detalle de Incidencia</h4>
-                      <p className="text-xs text-gray-400 mt-1 max-w-[200px] mx-auto">Selecciona un marcador en el mapa para visualizar la información del reporte.</p>
+                      <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                        <ClipboardList className="h-4.5 w-4.5 text-primary" />
+                        Distribución de Incidencias
+                      </h4>
+                      <p className="text-[10px] text-gray-400 mt-1">Desglose de focos de basura por tipo.</p>
+                    </div>
+
+                    <div className="flex flex-col gap-3.5">
+                      {categoryDistribution.map((item) => {
+                        const barColors: Record<string, string> = {
+                          BASURAL: 'bg-gradient-to-r from-blue-500 to-cyan-500 glow-blue',
+                          ALCANTARILLA: 'bg-gradient-to-r from-cyan-400 to-teal-400',
+                          ESCOMBROS: 'bg-gradient-to-r from-orange-400 to-amber-500 glow-orange',
+                          PELIGROSO: 'bg-gradient-to-r from-red-500 to-orange-500 glow-red',
+                          OTROS: 'bg-gradient-to-r from-gray-500 to-gray-400',
+                        };
+
+                        const color = barColors[item.category] || 'bg-primary';
+
+                        return (
+                          <div key={item.category} className="flex flex-col gap-1">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-semibold text-gray-300 text-[9px] uppercase tracking-wider">{item.category}</span>
+                              <span className="font-bold text-white text-[10px]">{item.count} ({item.percentage.toFixed(0)}%)</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-black/40 rounded-full overflow-hidden border border-white/5 p-[1px]">
+                              <div 
+                                className={`h-full rounded-full transition-all duration-700 ${color}`}
+                                style={{ width: `${item.percentage}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="border-t border-white/5 pt-4 text-center">
+                      <p className="text-[10px] text-gray-500">Haz clic en un marcador del mapa para ver sus detalles específicos.</p>
                     </div>
                   </div>
                 )}

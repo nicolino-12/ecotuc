@@ -30,32 +30,87 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
   const [mapCenter, setMapCenter] = useState<[number, number]>([-26.828372, -65.222312]); // San Miguel de Tucumán
 
   // Configuración de iconos dinámicos usando Tailwind CSS y L.divIcon
-  const getReportIcon = (priority: string, status: string) => {
+  const getReportIcon = (priority: string, status: string, category: string) => {
     const isResolved = status === 'RESUELTO';
     
     if (isResolved) {
       return L.divIcon({
-        html: `<div class="w-4.5 h-4.5 rounded-full bg-gray-500 border border-white flex items-center justify-center shadow-lg"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg></div>`,
+        html: `
+          <div class="w-8 h-8 rounded-full bg-gray-600/90 border-2 border-gray-400 flex items-center justify-center shadow-lg text-white">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        `,
         className: '',
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
       });
     }
 
-    const colorMap: Record<string, string> = {
-      CRITICA: 'bg-red-500 ring-4 ring-red-500/35 glow-red',
-      ALTA: 'bg-orange-500 ring-4 ring-orange-500/35 glow-orange',
-      MEDIA: 'bg-amber-500 ring-3 ring-amber-500/30 glow-amber',
-      BAJA: 'bg-green-500 ring-3 ring-green-500/30 glow-green',
+    // Colores según prioridad
+    const colors: Record<string, { bg: string, ring: string, border: string, text: string }> = {
+      CRITICA: {
+        bg: 'bg-red-500/90',
+        ring: 'ring-red-500/30',
+        border: 'border-red-400',
+        text: 'text-white'
+      },
+      ALTA: {
+        bg: 'bg-orange-500/90',
+        ring: 'ring-orange-500/30',
+        border: 'border-orange-400',
+        text: 'text-white'
+      },
+      MEDIA: {
+        bg: 'bg-amber-500/90',
+        ring: 'ring-amber-500/30',
+        border: 'border-amber-400',
+        text: 'text-gray-900'
+      },
+      BAJA: {
+        bg: 'bg-green-500/90',
+        ring: 'ring-green-500/30',
+        border: 'border-green-400',
+        text: 'text-white'
+      }
     };
-    
-    const color = colorMap[priority] || 'bg-blue-500';
+
+    const c = colors[priority] || { bg: 'bg-blue-500/90', ring: 'ring-blue-500/30', border: 'border-blue-400', text: 'text-white' };
+
+    // Iconos SVG según categoría
+    let iconSvg = '';
+    switch (category) {
+      case 'BASURAL':
+        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
+        break;
+      case 'ALCANTARILLA':
+        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><path d="M12 2v20M17 5H7M19 10H5M20 15H4M17 19H7"/></svg>`;
+        break;
+      case 'ESCOMBROS':
+        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>`;
+        break;
+      case 'PELIGROSO':
+        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+        break;
+      default:
+        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
+    }
+
+    const showPulse = priority === 'CRITICA' || priority === 'ALTA';
 
     return L.divIcon({
-      html: `<div class="w-4 h-4 rounded-full ${color} animate-pulse border-2 border-white shadow-lg"></div>`,
+      html: `
+        <div class="relative flex items-center justify-center">
+          ${showPulse ? `<span class="absolute inline-flex h-8 w-8 rounded-full ${c.bg} opacity-20 animate-ping"></span>` : ''}
+          <div class="w-8 h-8 rounded-full ${c.bg} ${c.text} border-2 ${c.border} flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.4)] transition-all duration-300 hover:scale-110">
+            ${iconSvg}
+          </div>
+        </div>
+      `,
       className: '',
-      iconSize: [16, 16],
-      iconAnchor: [8, 8],
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
     });
   };
 
@@ -170,7 +225,7 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
             <Marker 
               key={rep.id} 
               position={[rep.latitude, rep.longitude]}
-              icon={getReportIcon(rep.priority, rep.status)}
+              icon={getReportIcon(rep.priority, rep.status, rep.category)}
               eventHandlers={{
                 click: () => onSelectReport(rep)
               }}

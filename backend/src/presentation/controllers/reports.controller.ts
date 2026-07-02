@@ -4,6 +4,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { DataSource } from 'typeorm';
 import { ReportEntity } from '../../infrastructure/entities/report.entity';
 import { PriorityService } from '../../application/services/priority.service';
+import { NotificationsGateway } from '../gateways/notifications.gateway';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import * as fs from 'fs';
@@ -29,6 +30,7 @@ export class ReportsController {
   constructor(
     private dataSource: DataSource,
     private priorityService: PriorityService,
+    private notificationsGateway: NotificationsGateway,
   ) {
     // Asegurar que exista carpeta uploads
     if (!fs.existsSync('./uploads')) {
@@ -64,11 +66,16 @@ export class ReportsController {
     const saved = await reportRepo.save(report);
 
     // Retornar objeto legible convirtiendo el Point de vuelta a coords
-    return {
+    const result = {
       ...saved,
       latitude: dto.latitude,
       longitude: dto.longitude,
     };
+
+    // Emitir por WebSockets
+    this.notificationsGateway.broadcastNewReport(result);
+
+    return result;
   }
 
   @Post('upload')

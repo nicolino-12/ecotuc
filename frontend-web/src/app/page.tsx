@@ -6,8 +6,10 @@ import {
   Trash2, AlertTriangle, Users, CheckCircle, Clock, MapPin, 
   ListFilter, ShieldAlert, PlusCircle, Smartphone, Map as MapIcon, 
   ClipboardList, LogOut, Send, Camera, User, Lock, Mail, Check, HelpCircle, Info,
-  Database, RefreshCw, Eye, Phone, Home, Flame
+  Database, RefreshCw, Eye, Phone, Home, Flame, BarChart3 
 } from 'lucide-react';
+import { io } from 'socket.io-client';
+import AnalyticsDashboard from '../components/AnalyticsDashboard';
 
 // Base de datos local persistente
 import { 
@@ -33,26 +35,7 @@ import CrewsPanel from '../components/CrewsPanel';
 import ReportsTable from '../components/ReportsTable';
 import MockMobileSimulator from '../components/MockMobileSimulator';
 
-const SAMPLE_PHOTOS = [
-  {
-    name: 'Basural Masivo',
-    url: 'https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=600&auto=format&fit=crop',
-    category: 'BASURAL',
-    desc: 'Basura tirada en esquina de baldío.'
-  },
-  {
-    name: 'Alcantarilla Tapada',
-    url: 'https://images.unsplash.com/photo-1542060748-10c28b629f6f?w=600&auto=format&fit=crop',
-    category: 'ALCANTARILLA',
-    desc: 'Residuos obstruyendo el paso del agua.'
-  },
-  {
-    name: 'Escombros de Obra',
-    url: 'https://images.unsplash.com/photo-1590086782792-4f9f9743479f?w=600&auto=format&fit=crop',
-    category: 'ESCOMBROS',
-    desc: 'Ladrillos y arena en la acera.'
-  }
-];
+// No preset photos
 
 export default function AppContainer() {
   // Estado de sesión
@@ -77,9 +60,10 @@ export default function AppContainer() {
   // Estados de datos generales
   const [reports, setReports] = useState<Report[]>([]);
   const [crews, setCrews] = useState<Crew[]>([]);
-  const [activeTab, setActiveTab] = useState<'map' | 'crews' | 'table' | 'simulator'>('map');
+  const [activeTab, setActiveTab] = useState<'map' | 'crews' | 'table' | 'simulator' | 'analytics'>('map');
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [apiOnline, setApiOnline] = useState<boolean>(false);
+  const [toasts, setToasts] = useState<any[]>([]);
   const [stats, setStats] = useState({
     total: 0,
     open: 0,
@@ -91,7 +75,6 @@ export default function AppContainer() {
   // Estados del formulario del ciudadano web
   const [citCategory, setCitCategory] = useState<string>('BASURAL');
   const [citDesc, setCitDesc] = useState<string>('');
-  const [citPhotoIdx, setCitPhotoIdx] = useState<number | null>(null);
   const [customPhoto, setCustomPhoto] = useState<string | null>(null);
   const [customFile, setCustomFile] = useState<File | null>(null);
   const [locationInput, setLocationInput] = useState<string>('');
@@ -147,11 +130,6 @@ export default function AppContainer() {
     return `${cleanBackendUrl}${url}`;
   };
 
-  // Inicializar la base de datos local al cargar la app
-  useEffect(() => {
-    initDB();
-  }, []);
-
   // Cargar datos desde la DB local (o backend si está online)
   const loadData = useCallback(async () => {
     try {
@@ -186,7 +164,102 @@ export default function AppContainer() {
       setStats(localStats);
       setApiOnline(false);
     }
+  }, [backendUrl]);
+
+  // Inicializar la base de datos local al cargar la app
+  useEffect(() => {
+    initDB();
   }, []);
+
+  const addToast = useCallback((report: any) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts(prev => {
+      if (prev.some(t => t.report.id === report.id || String(t.report.id) === String(report.id))) return prev;
+      return [...prev, { id, report }];
+    });
+    
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 6000);
+  }, []);
+
+  // Escuchar efecto de limpieza (desde la simulación del mapa)
+  useEffect(() => {
+    const handleCleaning = (e: Event) => {
+      const { lat, lng } = (e as CustomEvent).detail;
+      setReports(prev => {
+        const found = prev.find(r => 
+          Math.abs(r.latitude - lat) < 0.0001 && 
+          Math.abs(r.longitude - lng) < 0.0001
+        );
+        if (found && found.status !== 'RESUELTO') {
+          const updated = prev.map(r => {
+            if (r.id === found.id) {
+              return { ...r, status: 'RESUELTO', resolvedAt: new Date().toISOString() };
+            }
+            return r;
+          });
+          
+          if (!apiOnline) {
+            saveAllReports(updated);
+          }
+          return updated;
+        }
+        return prev;
+      });
+
+      setTimeout(() => {
+        if (apiOnline) {
+          loadData();
+        } else {
+          setStats(getReportStats());
+        }
+      }, 100);
+    };
+
+    window.addEventListener('ecotuc:cleaning-effect', handleCleaning);
+    return () => window.removeEventListener('ecotuc:cleaning-effect', handleCleaning);
+  }, [apiOnline, loadData]);
+
+  // Escuchar nuevos reportes (Sockets y Evento Local Offline)
+  useEffect(() => {
+    const handleLocalReport = (e: Event) => {
+      const newRep = (e as CustomEvent).detail;
+      addToast(newRep);
+    };
+    window.addEventListener('ecotuc:new-report', handleLocalReport);
+
+    let socket: any = null;
+    if (apiOnline) {
+      const socketUrl = backendUrl.replace('/api', '');
+      socket = io(socketUrl, { transports: ['websocket'] });
+
+      socket.on('connect', () => {
+        console.log('Conectado al gateway de WebSockets de EcoTuc');
+      });
+
+      socket.on('newReport', (newRep: any) => {
+        console.log('Nuevo reporte recibido por socket:', newRep);
+        
+        setReports(prev => {
+          if (prev.some(r => r.id === newRep.id || String(r.id) === String(newRep.id))) return prev;
+          return [newRep, ...prev];
+        });
+
+        loadData();
+        addToast(newRep);
+      });
+    }
+
+    return () => {
+      window.removeEventListener('ecotuc:new-report', handleLocalReport);
+      if (socket) {
+        socket.disconnect();
+      }
+    };
+  }, [apiOnline, backendUrl, addToast, loadData]);
+
+
 
   useEffect(() => {
     loadData();
@@ -431,7 +504,7 @@ export default function AppContainer() {
   // Crear reporte desde Ciudadano Web — PERSISTENTE
   const handleCitizenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (citPhotoIdx === null && !customPhoto) return;
+    if (!customPhoto) return;
     setIsSubmittingReport(true);
 
     const priority = citCategory === 'PELIGROSO' ? 'CRITICA' 
@@ -444,7 +517,7 @@ export default function AppContainer() {
       : citCategory === 'ALCANTARILLA' ? 75 
       : 50;
 
-    let reportPhotoUrl = customPhoto || (citPhotoIdx !== null ? SAMPLE_PHOTOS[citPhotoIdx].url : '');
+    let reportPhotoUrl = customPhoto;
 
     const reportData = {
       category: citCategory,
@@ -498,7 +571,6 @@ export default function AppContainer() {
         if (res.ok) {
           setShowSuccessAlert(true);
           setCitDesc('');
-          setCitPhotoIdx(null);
           setCustomPhoto(null);
           setCustomFile(null);
           setLocationInput('');
@@ -513,10 +585,11 @@ export default function AppContainer() {
         const newReport = addReport(reportData);
         setReports(getAllReports());
         setStats(getReportStats());
+        const event = new CustomEvent('ecotuc:new-report', { detail: newReport });
+        window.dispatchEvent(event);
 
         setShowSuccessAlert(true);
         setCitDesc('');
-        setCitPhotoIdx(null);
         setCustomPhoto(null);
         setCustomFile(null);
         setLocationInput('');
@@ -536,9 +609,11 @@ export default function AppContainer() {
         setReports(updatedReports);
         setStats(updatedStats);
 
+        const event = new CustomEvent('ecotuc:new-report', { detail: newReport });
+        window.dispatchEvent(event);
+
         setShowSuccessAlert(true);
         setCitDesc('');
-        setCitPhotoIdx(null);
         setCustomPhoto(null);
         setCustomFile(null);
         setLocationInput('');
@@ -546,6 +621,63 @@ export default function AppContainer() {
         setIsSubmittingReport(false);
       }, 600);
     }
+  };
+
+  // Crear reporte offline de manera manual (bypasseando API para pruebas o trabajo sin red)
+  const handleOfflineSubmit = () => {
+    if (!customPhoto) {
+      alert("Es necesario cargar una fotografía para reportar de forma offline.");
+      return;
+    }
+    setIsSubmittingReport(true);
+
+    const priority = citCategory === 'PELIGROSO' ? 'CRITICA' 
+      : citCategory === 'BASURAL' ? 'ALTA' 
+      : citCategory === 'ALCANTARILLA' ? 'ALTA' 
+      : 'MEDIA';
+    
+    const score = citCategory === 'PELIGROSO' ? 92 
+      : citCategory === 'BASURAL' ? 80 
+      : citCategory === 'ALCANTARILLA' ? 75 
+      : 50;
+
+    const reportData = {
+      category: citCategory,
+      description: citDesc,
+      imageUrl: customPhoto,
+      latitude: citCoords.lat,
+      longitude: citCoords.lng,
+      priority,
+      priorityScore: score,
+      status: 'PENDIENTE',
+      crewId: null,
+      observations: null,
+      citizenEmail: user?.email || 'anonimo@ecotuc.com',
+      citizenName: user?.fullName || 'Ciudadano Anónimo',
+      upvotes: 0,
+      supportedBy: [],
+    };
+
+    setTimeout(() => {
+      const newReport = addReport(reportData);
+
+      const updatedReports = getAllReports();
+      const updatedStats = getReportStats();
+
+      setReports(updatedReports);
+      setStats(updatedStats);
+
+      const event = new CustomEvent('ecotuc:new-report', { detail: newReport });
+      window.dispatchEvent(event);
+
+      setShowSuccessAlert(true);
+      setCitDesc('');
+      setCustomPhoto(null);
+      setCustomFile(null);
+      setLocationInput('');
+      setLocationFeedback('');
+      setIsSubmittingReport(false);
+    }, 600);
   };
 
   // Calcular reportes del ciudadano actual
@@ -928,7 +1060,6 @@ export default function AppContainer() {
                               const reader = new FileReader();
                               reader.onloadend = () => {
                                 setCustomPhoto(reader.result as string);
-                                setCitPhotoIdx(null); // Deseleccionar predeterminadas
                               };
                               reader.readAsDataURL(file);
                             }
@@ -960,34 +1091,7 @@ export default function AppContainer() {
                     )}
                   </div>
 
-                  {/* Fotos preestablecidas para prueba rápida */}
-                  <div className="mt-1 flex flex-col gap-1.5">
-                    <span className="text-[10px] text-gray-500 font-bold uppercase font-sans">O selecciona una simulación rápida:</span>
-                    <div className="grid grid-cols-3 gap-3">
-                      {SAMPLE_PHOTOS.map((photo, index) => (
-                        <div 
-                          key={index}
-                          onClick={() => {
-                            setCitPhotoIdx(index);
-                            setCustomPhoto(null); // Limpiar foto cargada
-                            setCustomFile(null);
-                            setCitCategory(photo.category);
-                            setCitDesc(photo.desc);
-                          }}
-                          className={`h-20 rounded-xl overflow-hidden cursor-pointer border-2 transition-all relative ${
-                            citPhotoIdx === index ? 'border-primary ring-4 ring-primary/20 scale-95' : 'border-white/5'
-                          }`}
-                        >
-                          <img src={photo.url} alt="" className="object-cover w-full h-full" />
-                          {citPhotoIdx === index && (
-                            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                              <Check className="h-5 w-5 text-white" />
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+
                 </div>
 
                 {/* Input Inteligente de Dirección / Coordenadas / Maps Link */}
@@ -1084,18 +1188,33 @@ export default function AppContainer() {
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={(citPhotoIdx === null && !customPhoto) || isSubmittingReport}
-                  className={`w-full py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg ${
-                    (citPhotoIdx === null && !customPhoto) || isSubmittingReport
-                      ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                      : 'bg-primary hover:bg-primary-dark text-white shadow-primary/20'
-                  }`}
-                >
-                  <Send className="h-4 w-4" />
-                  {isSubmittingReport ? 'Guardando en Base de Datos...' : 'Enviar Reporte al Municipio'}
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3 mt-2">
+                  <button
+                    type="submit"
+                    disabled={!customPhoto || isSubmittingReport}
+                    className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg ${
+                      !customPhoto || isSubmittingReport
+                        ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-white/5'
+                        : 'bg-primary hover:bg-primary-dark text-white shadow-primary/20'
+                    }`}
+                  >
+                    <Send className="h-4 w-4" />
+                    {isSubmittingReport ? 'Enviando...' : 'Enviar Reporte (Online)'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOfflineSubmit}
+                    disabled={!customPhoto || isSubmittingReport}
+                    className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg border ${
+                      !customPhoto || isSubmittingReport
+                        ? 'bg-gray-900 text-gray-600 border-white/5 cursor-not-allowed'
+                        : 'bg-cardLight hover:bg-gray-800 text-white border-white/10'
+                    }`}
+                  >
+                    <Database className="h-4 w-4 text-primary" />
+                    Reportar Offline (Borrador)
+                  </button>
+                </div>
               </form>
             </div>
 
@@ -1468,6 +1587,15 @@ export default function AppContainer() {
             <Smartphone className="h-4.5 w-4.5" />
             Simulador de Ciudadano
           </button>
+          <button 
+            onClick={() => setActiveTab('analytics')}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all border border-transparent ${
+              activeTab === 'analytics' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-400 hover:text-white hover:border-primary/20'
+            }`}
+          >
+            <BarChart3 className="h-4.5 w-4.5" />
+            Analíticas del Municipio
+          </button>
         </div>
 
         {/* Banner de Filtro Activo */}
@@ -1688,11 +1816,79 @@ export default function AppContainer() {
                 const updatedStats = getReportStats();
                 setReports(updatedReports);
                 setStats(updatedStats);
+
+                const event = new CustomEvent('ecotuc:new-report', { detail: reportToSave });
+                window.dispatchEvent(event);
               }}
+            />
+          )}
+
+          {activeTab === 'analytics' && (
+            <AnalyticsDashboard 
+              reports={reports} 
+              crews={crews} 
             />
           )}
         </div>
       </main>
+
+      {/* Panel de Toasts Notificadores Flotantes Premium */}
+      <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-3.5 max-w-sm w-full pointer-events-none">
+        {toasts.map((t) => {
+          const priorityColors: Record<string, string> = {
+            CRITICA: 'border-red-500 bg-red-500/10 text-red-400 glow-red',
+            ALTA: 'border-orange-500 bg-orange-500/10 text-orange-400 glow-orange',
+            MEDIA: 'border-amber-500 bg-amber-500/10 text-amber-400 glow-amber',
+            BAJA: 'border-green-500 bg-green-500/10 text-green-400 glow-green'
+          };
+          const borderStyle = priorityColors[t.report.priority] || 'border-white/10 bg-black/80';
+          
+          return (
+            <div 
+              key={t.id} 
+              className={`pointer-events-auto w-full p-4 rounded-2xl border backdrop-blur-md shadow-2xl flex gap-3.5 animate-in slide-in-from-right-10 fade-in duration-300 ${borderStyle}`}
+            >
+              <div className="h-12 w-12 rounded-xl overflow-hidden bg-black/40 border border-white/5 flex-shrink-0 relative">
+                <img 
+                  src={getImageUrl(t.report.imageUrl)} 
+                  alt="" 
+                  className="object-cover w-full h-full"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=600&auto=format&fit=crop';
+                  }}
+                />
+              </div>
+
+              <div className="flex-1 flex flex-col gap-0.5">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-white text-xs tracking-wide uppercase">{t.report.category}</span>
+                  <span className="text-[8px] text-gray-400 font-sans">Hace unos instantes</span>
+                </div>
+                <p className="text-[10px] text-gray-300 line-clamp-2 mt-0.5 font-sans leading-relaxed">
+                  {t.report.description || 'Nuevo incidente registrado en la zona.'}
+                </p>
+                <div className="flex items-center justify-between mt-2.5 pt-1.5 border-t border-white/5">
+                  <span className="text-[8px] text-gray-400 flex items-center gap-1 font-sans">
+                    <MapPin className="h-3 w-3 text-primary" /> 
+                    {t.report.latitude.toFixed(5)}, {t.report.longitude.toFixed(5)}
+                  </span>
+                  <button 
+                    onClick={() => {
+                      setSelectedReport(t.report);
+                      setActiveTab('map');
+                      // Remueve este toast inmediatamente
+                      setToasts(prev => prev.filter(item => item.id !== t.id));
+                    }}
+                    className="text-[9px] font-bold text-white bg-primary/20 hover:bg-primary py-1 px-2.5 rounded-lg border border-primary/20 transition-all font-sans cursor-pointer animate-pulse"
+                  >
+                    Ver en Mapa
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { ListFilter, MapPin, Eye } from 'lucide-react';
@@ -27,7 +27,117 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterPriority, setFilterPriority] = useState<string>('ALL');
-  const [mapCenter, setMapCenter] = useState<[number, number]>([-26.828372, -65.222312]); // San Miguel de Tucumán
+  const [mapCenter, setMapCenter] = useState<[number, number]>([-26.828372, -65.222312]);
+  
+  // Posiciones simuladas de los camiones
+  const [simulatedPositions, setSimulatedPositions] = useState<Record<string, { lat: number; lng: number; targetIdx: number; progress: number }>>({});
+
+  // 1. Simulación de movimiento del camión de basura
+  useEffect(() => {
+    const activeCrewsEnRuta = crews.filter(c => c.status === 'EN_RUTA');
+    if (activeCrewsEnRuta.length === 0) {
+      setSimulatedPositions({});
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setSimulatedPositions(prev => {
+        const next = { ...prev };
+        
+        activeCrewsEnRuta.forEach(crew => {
+          const routeStr = localStorage.getItem(`route_${crew.id}`);
+          if (!routeStr) return;
+          const route = JSON.parse(routeStr);
+          if (!route || !route.optimizedSequence || route.optimizedSequence.length === 0) return;
+
+          const startCoords: [number, number] = [-26.828372, -65.222312]; // Plaza Independencia (Base)
+          const stops: [number, number][] = [startCoords];
+          
+          route.optimizedSequence.forEach((repId: string) => {
+            const rep = reports.find(r => r.id === repId || String(r.id) === String(repId));
+            if (rep) {
+              stops.push([rep.latitude, rep.longitude]);
+            }
+          });
+          stops.push(startCoords);
+
+          const curPos = next[crew.id] || { lat: startCoords[0], lng: startCoords[1], targetIdx: 1, progress: 0 };
+          let { lat, lng, targetIdx, progress } = curPos;
+
+          if (targetIdx >= stops.length) {
+            // Completó todo el recorrido, camión estacionado en base
+            next[crew.id] = { lat: startCoords[0], lng: startCoords[1], targetIdx, progress };
+            return;
+          }
+
+          const fromPoint = stops[targetIdx - 1];
+          const toPoint = stops[targetIdx];
+
+          // 5% de avance por tick de intervalo (aprox 20 ticks por tramo)
+          progress += 0.05; 
+
+          if (progress >= 1) {
+            lat = toPoint[0];
+            lng = toPoint[1];
+            targetIdx += 1;
+            progress = 0;
+            
+            // Disparar evento de limpieza al llegar a un reporte
+            const reachedReport = reports.find(r => 
+              Math.abs(r.latitude - toPoint[0]) < 0.0001 && 
+              Math.abs(r.longitude - toPoint[1]) < 0.0001
+            );
+            if (reachedReport && reachedReport.status !== 'RESUELTO') {
+              const cleanEvent = new CustomEvent('ecotuc:cleaning-effect', { 
+                detail: { lat: toPoint[0], lng: toPoint[1] } 
+              });
+              window.dispatchEvent(cleanEvent);
+            }
+          } else {
+            // Interpolación lineal
+            lat = fromPoint[0] + (toPoint[0] - fromPoint[0]) * progress;
+            lng = fromPoint[1] + (toPoint[1] - fromPoint[1]) * progress;
+          }
+
+          next[crew.id] = { lat, lng, targetIdx, progress };
+        });
+
+        return next;
+      });
+    }, 450);
+
+    return () => clearInterval(interval);
+  }, [crews, reports]);
+
+  // 2. Trazado de líneas de rutas activas
+  const activeRoutesPaths = useMemo(() => {
+    const paths: { crewId: string; crewName: string; coords: [number, number][] }[] = [];
+    crews.forEach(crew => {
+      if (crew.status === 'EN_RUTA') {
+        const routeStr = localStorage.getItem(`route_${crew.id}`);
+        if (routeStr) {
+          const route = JSON.parse(routeStr);
+          if (route && route.optimizedSequence && route.optimizedSequence.length > 0) {
+            const startCoords: [number, number] = [-26.828372, -65.222312];
+            const coords: [number, number][] = [startCoords];
+            route.optimizedSequence.forEach((repId: string) => {
+              const rep = reports.find(r => r.id === repId || String(r.id) === String(repId));
+              if (rep) {
+                coords.push([rep.latitude, rep.longitude]);
+              }
+            });
+            coords.push(startCoords);
+            paths.push({
+              crewId: crew.id,
+              crewName: crew.name,
+              coords
+            });
+          }
+        }
+      }
+    });
+    return paths;
+  }, [crews, reports]);
 
   // Configuración de iconos dinámicos usando Tailwind CSS y L.divIcon
   const getReportIcon = (priority: string, status: string, category: string) => {
@@ -254,13 +364,28 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
             </Marker>
           ))}
 
+          {/* Trazado de Rutas Activas */}
+          {activeRoutesPaths.map((p) => (
+            <Polyline 
+              key={p.crewId} 
+              positions={p.coords} 
+              color="#a855f7"
+              dashArray="8, 12" 
+              weight={4}
+              opacity={0.8}
+            />
+          ))}
+
           {/* Marcadores de Cuadrillas */}
-          {crews.map((crew) => (
-            <Marker 
-              key={crew.id} 
-              position={[crew.latitude, crew.longitude]}
-              icon={getCrewIcon(crew.status)}
-            >
+          {crews.map((crew) => {
+            const crewLat = simulatedPositions[crew.id] ? simulatedPositions[crew.id].lat : crew.latitude;
+            const crewLng = simulatedPositions[crew.id] ? simulatedPositions[crew.id].lng : crew.longitude;
+            return (
+              <Marker 
+                key={crew.id} 
+                position={[crewLat || -26.828372, crewLng || -65.222312]}
+                icon={getCrewIcon(crew.status)}
+              >
               <Popup>
                 <div className="p-1">
                   <h4 className="font-bold text-sm text-white">{crew.name}</h4>
@@ -277,7 +402,8 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
                 </div>
               </Popup>
             </Marker>
-          ))}
+          );
+        })}
         </MapContainer>
       </div>
     </div>

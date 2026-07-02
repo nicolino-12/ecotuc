@@ -17,6 +17,9 @@ import { ReportsController } from './presentation/controllers/reports.controller
 import { CrewsController } from './presentation/controllers/crews.controller';
 import { RoutesController } from './presentation/controllers/routes.controller';
 
+// Gateways
+import { NotificationsGateway } from './presentation/gateways/notifications.gateway';
+
 // Servicios
 import { PriorityService } from './application/services/priority.service';
 import { RoutingService } from './application/services/routing.service';
@@ -63,6 +66,7 @@ import { RoutingService } from './application/services/routing.service';
   providers: [
     PriorityService,
     RoutingService,
+    NotificationsGateway,
   ],
 })
 export class AppModule {}

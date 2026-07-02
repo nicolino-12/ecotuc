@@ -165,6 +165,39 @@ export default function ReportsTable({
     }
   };
 
+  const exportToCSV = () => {
+    if (filtered.length === 0) {
+      alert("No hay datos para exportar.");
+      return;
+    }
+
+    const headers = ["ID", "Categoria", "Descripcion", "Latitud", "Longitud", "Prioridad", "Score Prioridad", "Estado", "Cuadrilla Asignada", "Fecha de Creacion"];
+    
+    const rows = filtered.map(r => [
+      r.id,
+      r.category,
+      `"${(r.description || '').replace(/"/g, '""')}"`,
+      r.latitude,
+      r.longitude,
+      r.priority,
+      r.priorityScore || 0,
+      r.status,
+      r.crewId || "Ninguna",
+      r.createdAt ? new Date(r.createdAt).toISOString() : ""
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Reportes_EcoTuc_${Date.now()}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="glass-card p-6 rounded-2xl flex flex-col gap-6">
       {/* Cabecera y Filtros */}
@@ -177,7 +210,16 @@ export default function ReportsTable({
           <p className="text-xs text-gray-400 mt-0.5">Listado y auditoría completa de los reportes urbanos</p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3 items-center">
+          <button
+            type="button"
+            onClick={exportToCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-lg text-xs font-semibold transition-all border border-primary/20"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Exportar CSV
+          </button>
+
           <div className="flex items-center gap-1.5 bg-cardLight/50 px-3 py-1.5 rounded-lg border border-white/5">
             <ListFilter className="h-3.5 w-3.5 text-gray-400" />
             <select 

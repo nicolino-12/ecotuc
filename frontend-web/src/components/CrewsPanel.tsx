@@ -3,8 +3,9 @@
 import React, { useState } from 'react';
 import { 
   Users, Trash2, Route, Navigation, CheckCircle2, Play, 
-  MapPin, Clock, Calendar, CheckSquare, Plus, Check 
+  MapPin, Clock, Calendar, CheckSquare, Plus, Check, FileText 
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 
 interface CrewsPanelProps {
   crews: any[];
@@ -143,6 +144,9 @@ export default function CrewsPanel({
         if (res.ok) {
           const route = await res.json();
           setActiveRoute(route);
+          localStorage.setItem(`route_${crewId}`, JSON.stringify(route));
+        } else {
+          localStorage.removeItem(`route_${crewId}`);
         }
       } catch (e) {
         console.error('Error al cargar ruta activa:', e);
@@ -239,6 +243,7 @@ export default function CrewsPanel({
         if (res.ok) {
           const route = await res.json();
           setActiveRoute(route);
+          localStorage.setItem(`route_${selectedCrewId}`, JSON.stringify(route));
           setSelectedReportIds([]);
           onRouteGenerated();
         }
@@ -292,6 +297,7 @@ export default function CrewsPanel({
           body: JSON.stringify({ status: 'COMPLETADA' })
         });
         if (res.ok) {
+          localStorage.removeItem(`route_${selectedCrewId}`);
           setActiveRoute(null);
           onRouteGenerated();
         }
@@ -325,6 +331,93 @@ export default function CrewsPanel({
         onLocalUpdate(updatedCrews, updatedReports);
       }
     }
+  };
+
+  const downloadRoutePDF = () => {
+    if (!activeRoute) return;
+    const crew = crews.find(c => c.id === selectedCrewId || String(c.id) === String(selectedCrewId));
+    if (!crew) return;
+
+    const doc = new jsPDF();
+    
+    // Configuración estética del PDF
+    doc.setFillColor(22, 22, 26);
+    doc.rect(0, 0, 210, 40, 'F');
+    
+    // Título
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(22);
+    doc.text('EcoTuc - Reporte de Ruta Municipal', 15, 25);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Generado el: ${new Date().toLocaleString('es-AR')}`, 15, 33);
+    
+    // Información de la Cuadrilla
+    doc.setTextColor(33, 33, 33);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Detalles de la Cuadrilla', 15, 55);
+    
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Cuadrilla: ${crew.name}`, 15, 65);
+    doc.text(`Patente Vehiculo: ${crew.vehiclePlate}`, 15, 71);
+    
+    const driver = crew.members?.find((m: any) => m.role === 'CHOFER')?.fullName || 'No asignado';
+    const collector = crew.members?.find((m: any) => m.role === 'RECOLECTOR')?.fullName || 'No asignado';
+    doc.text(`Chofer: ${driver}`, 15, 77);
+    doc.text(`Recolector: ${collector}`, 15, 83);
+    
+    // Estadísticas del Recorrido
+    doc.setFont('helvetica', 'bold');
+    doc.text('Estadisticas del Recorrido', 110, 55);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Distancia Total: ${activeRoute.totalDistanceKm} km`, 110, 65);
+    doc.text(`Tiempo Estimado: ${activeRoute.estimatedTimeMins} minutos`, 110, 71);
+    doc.text(`Puntos a Limpiar: ${activeRoute.optimizedSequence.length}`, 110, 77);
+    doc.text(`Estado de Ruta: ${activeRoute.status || 'EN PROCESO'}`, 110, 83);
+    
+    // Separador
+    doc.setDrawColor(200, 200, 200);
+    doc.line(15, 92, 195, 92);
+    
+    // Secuencia de Recolección
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Secuencia de Recoleccion Optimizada (TSP)', 15, 103);
+    
+    let y = 115;
+    activeRoute.optimizedSequence.forEach((repId: string, index: number) => {
+      const repInfo = reports.find(r => r.id === repId || String(r.id) === String(repId));
+      if (!repInfo) return;
+      
+      doc.setFillColor(245, 247, 250);
+      doc.roundedRect(15, y - 5, 180, 22, 2, 2, 'F');
+      
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(99, 102, 241);
+      doc.text(`Paso ${index + 1}: ${repInfo.category}`, 20, y + 2);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(80, 80, 80);
+      const desc = repInfo.description || 'Sin observaciones de carga.';
+      doc.text(desc.length > 80 ? desc.substring(0, 77) + '...' : desc, 20, y + 8);
+      
+      doc.setFontSize(9);
+      doc.setTextColor(110, 110, 110);
+      doc.text(`Prioridad: ${repInfo.priority}  |  Coordenadas: ${repInfo.latitude.toFixed(5)}, ${repInfo.longitude.toFixed(5)}`, 20, y + 13);
+      
+      y += 26;
+      if (y > 270) {
+        doc.addPage();
+        y = 25;
+      }
+    });
+
+    doc.save(`Ruta_Cuadrilla_${crew.name.replace(/\s+/g, '_')}_${Date.now()}.pdf`);
   };
 
   return (
@@ -578,13 +671,24 @@ export default function CrewsPanel({
                     </div>
                   </div>
 
-                  <button 
-                    onClick={() => handleCompleteRoute(activeRoute.id)}
-                    className="w-full bg-accent-purple hover:bg-purple-600 text-white font-bold py-2.5 rounded-xl transition-all shadow-md shadow-purple/20 flex items-center justify-center gap-2 mt-auto"
-                  >
-                    <CheckCircle2 className="h-4.5 w-4.5" />
-                    Finalizar Recolección
-                  </button>
+                  <div className="flex gap-2.5 mt-auto">
+                    <button 
+                      type="button"
+                      onClick={downloadRoutePDF}
+                      className="flex-1 bg-cardLight hover:bg-gray-800 text-white font-bold py-2.5 rounded-xl transition-all border border-white/5 flex items-center justify-center gap-2 text-xs"
+                    >
+                      <FileText className="h-4 w-4 text-primary" />
+                      Descargar PDF
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => handleCompleteRoute(activeRoute.id)}
+                      className="flex-1 bg-accent-purple hover:bg-purple-600 text-white font-bold py-2.5 rounded-xl transition-all shadow-md shadow-purple/20 flex items-center justify-center gap-2 text-xs"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Finalizar Ruta
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border border-dashed border-white/5 rounded-xl gap-2 h-64 text-gray-500">

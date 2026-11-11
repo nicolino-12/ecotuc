@@ -11,11 +11,16 @@ import { CrewMemberEntity } from './infrastructure/entities/crew-member.entity';
 import { InstitutionEntity } from './infrastructure/entities/institution.entity';
 import { RouteEntity } from './infrastructure/entities/route.entity';
 
+// Migraciones versionadas
+import { InitialSchema1700000000001 } from './infrastructure/migrations/1700000000001-InitialSchema';
+import { SeedDemoData1700000000002 } from './infrastructure/migrations/1700000000002-SeedDemoData';
+
 // Controladores
 import { AuthController } from './presentation/controllers/auth.controller';
 import { ReportsController } from './presentation/controllers/reports.controller';
 import { CrewsController } from './presentation/controllers/crews.controller';
 import { RoutesController } from './presentation/controllers/routes.controller';
+import { HealthController } from './presentation/controllers/health.controller';
 
 // Gateways
 import { NotificationsGateway } from './presentation/gateways/notifications.gateway';
@@ -31,7 +36,7 @@ import { RoutingService } from './application/services/routing.service';
       isGlobal: true,
     }),
     
-    // Conexión a Base de Datos PostgreSQL
+    // Conexión a Base de Datos PostgreSQL con soporte PostGIS y migraciones automáticas versionadas
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST || 'localhost',
@@ -47,13 +52,18 @@ import { RoutingService } from './application/services/routing.service';
         InstitutionEntity,
         RouteEntity,
       ],
-      synchronize: false, // Usamos init.sql para consistencia y PostGIS
+      migrations: [
+        InitialSchema1700000000001,
+        SeedDemoData1700000000002,
+      ],
+      migrationsRun: process.env.NODE_ENV !== 'test',
+      synchronize: false, // Migraciones versionadas garantizan consistencia y PostGIS sin pérdida accidental
     }),
 
     // Módulo JWT para Autenticación
     JwtModule.register({
       global: true,
-      secret: process.env.JWT_SECRET || 'ecotuc-jwt-secret-key-2026-dynamic',
+      secret: process.env.JWT_SECRET || 'ecotuc-jwt-dev-secret-key-change-in-production',
       signOptions: { expiresIn: '1d' },
     }),
   ],
@@ -62,6 +72,7 @@ import { RoutingService } from './application/services/routing.service';
     ReportsController,
     CrewsController,
     RoutesController,
+    HealthController,
   ],
   providers: [
     PriorityService,

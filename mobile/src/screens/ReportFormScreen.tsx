@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert } from 'react-native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
@@ -15,11 +15,8 @@ export default function ReportFormScreen({ token }: ReportFormScreenProps) {
   const [isLoadingGps, setIsLoadingGps] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Obtener geolocalización al iniciar
-  useEffect(() => {
-    requestLocationPermission();
-  }, []);
-
+  // NOTA DE PRIVACIDAD: No se solicitan permisos de ubicación en el montaje del componente.
+  // La geolocalización solo se solicita tras una acción explícita del usuario pulsando el botón.
   const requestLocationPermission = async () => {
     setIsLoadingGps(true);
     try {
@@ -33,6 +30,7 @@ export default function ReportFormScreen({ token }: ReportFormScreenProps) {
       setLocation(loc);
     } catch (e) {
       console.log(e);
+      Alert.alert('Error de GPS', 'No se pudo obtener la ubicación GPS.');
     } finally {
       setIsLoadingGps(false);
     }
@@ -74,7 +72,7 @@ export default function ReportFormScreen({ token }: ReportFormScreenProps) {
       return;
     }
     if (!location) {
-      Alert.alert('GPS Obligatorio', 'No se ha podido capturar tu ubicación GPS actual.');
+      Alert.alert('GPS Obligatorio', 'Debes capturar la ubicación GPS mediante el botón antes de enviar.');
       return;
     }
 
@@ -133,6 +131,7 @@ export default function ReportFormScreen({ token }: ReportFormScreenProps) {
         // Reset
         setImage(null);
         setDescription('');
+        setLocation(null);
       } else {
         throw new Error('Error de servidor');
       }
@@ -145,6 +144,7 @@ export default function ReportFormScreen({ token }: ReportFormScreenProps) {
       );
       setImage(null);
       setDescription('');
+      setLocation(null);
     } finally {
       setIsSubmitting(false);
     }
@@ -166,10 +166,10 @@ export default function ReportFormScreen({ token }: ReportFormScreenProps) {
           </View>
         ) : (
           <View style={styles.photoButtons}>
-            <TouchableOpacity style={styles.photoBtn} onPress={takePhoto}>
+            <TouchableOpacity style={styles.photoBtn} onPress={takePhoto} accessibilityLabel="Tomar foto con la cámara" accessibilityRole="button">
               <Text style={styles.photoBtnText}>Cámara 📸</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.photoBtn} onPress={selectFromGallery}>
+            <TouchableOpacity style={styles.photoBtn} onPress={selectFromGallery} accessibilityLabel="Seleccionar foto de la galería" accessibilityRole="button">
               <Text style={styles.photoBtnText}>Galería 🖼️</Text>
             </TouchableOpacity>
           </View>
@@ -185,6 +185,8 @@ export default function ReportFormScreen({ token }: ReportFormScreenProps) {
               key={cat}
               style={[styles.categoryOption, category === cat && styles.categoryOptionActive]}
               onPress={() => setCategory(cat)}
+              accessibilityLabel={`Seleccionar categoría ${cat}`}
+              accessibilityRole="button"
             >
               <Text style={[styles.categoryOptionText, category === cat && styles.categoryOptionTextActive]}>
                 {cat}
@@ -205,6 +207,7 @@ export default function ReportFormScreen({ token }: ReportFormScreenProps) {
           onChangeText={setDescription}
           multiline
           numberOfLines={3}
+          accessibilityLabel="Descripción del incidente"
         />
       </View>
 
@@ -216,21 +219,38 @@ export default function ReportFormScreen({ token }: ReportFormScreenProps) {
             <Text style={styles.gpsText}>Capturando ubicación GPS...</Text>
           </View>
         ) : location ? (
-          <Text style={styles.gpsText}>
-            📍 GPS Capturado: {location.coords.latitude.toFixed(5)}, {location.coords.longitude.toFixed(5)}
-          </Text>
+          <View style={styles.gpsSuccessContainer}>
+            <Text style={styles.gpsText}>
+              📍 GPS Capturado: {location.coords.latitude.toFixed(5)}, {location.coords.longitude.toFixed(5)}
+            </Text>
+            <TouchableOpacity 
+              style={styles.gpsButtonSecondary} 
+              onPress={requestLocationPermission}
+              accessibilityLabel="Actualizar coordenadas GPS"
+              accessibilityRole="button"
+            >
+              <Text style={styles.gpsButtonSecondaryText}>Actualizar GPS</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
-          <TouchableOpacity onPress={requestLocationPermission}>
-            <Text style={styles.gpsErrorText}>⚠️ Error GPS. Presiona para reintentar.</Text>
+          <TouchableOpacity 
+            style={styles.gpsButtonPrimary}
+            onPress={requestLocationPermission}
+            accessibilityLabel="Obtener ubicación GPS actual"
+            accessibilityRole="button"
+          >
+            <Text style={styles.gpsButtonPrimaryText}>📍 Obtener ubicación GPS actual</Text>
           </TouchableOpacity>
         )}
       </View>
 
       {/* Enviar */}
       <TouchableOpacity 
-        style={[styles.submitBtn, (!image || isSubmitting) && styles.submitBtnDisabled]}
+        style={[styles.submitBtn, (!image || !location || isSubmitting) && styles.submitBtnDisabled]}
         onPress={handleSubmit}
-        disabled={!image || isSubmitting}
+        disabled={!image || !location || isSubmitting}
+        accessibilityLabel="Enviar reporte de incidencia a EcoTuc"
+        accessibilityRole="button"
       >
         {isSubmitting ? (
           <ActivityIndicator size="small" color="#ffffff" />
@@ -263,7 +283,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#9ca3af',
+    color: '#d1d5db',
     textTransform: 'uppercase',
   },
   photoContainer: {
@@ -367,9 +387,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
-  gpsErrorText: {
-    color: '#f59e0b',
-    fontSize: 12,
+  gpsSuccessContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  gpsButtonPrimary: {
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  gpsButtonPrimaryText: {
+    color: '#10b981',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  gpsButtonSecondary: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  gpsButtonSecondaryText: {
+    color: '#10b981',
+    fontSize: 11,
     fontWeight: 'bold',
   },
   submitBtn: {

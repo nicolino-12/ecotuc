@@ -458,7 +458,7 @@ export default function CrewsPanel({
               <label className="text-[10px] text-gray-400">Patente del Vehículo *</label>
               <input 
                 type="text" 
-                placeholder="Ej: AD-456-OP"
+                placeholder="Ej: ECO-DEMO-04"
                 value={newCrewPlate}
                 onChange={e => setNewCrewPlate(e.target.value)}
                 className="bg-cardLight border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"

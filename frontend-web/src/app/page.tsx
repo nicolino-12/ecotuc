@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { 
   Trash2, AlertTriangle, Users, CheckCircle, Clock, MapPin, 
   ListFilter, ShieldAlert, PlusCircle, Smartphone, Map as MapIcon, 
   ClipboardList, LogOut, Send, Camera, User, Lock, Mail, Check, HelpCircle, Info,
-  Database, RefreshCw, Eye, Phone, Home, Flame, BarChart3 
+  Database, RefreshCw, Eye, Phone, Home, Flame, BarChart3, AlertCircle, ArrowRight
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import AnalyticsDashboard from '../components/AnalyticsDashboard';
@@ -15,27 +15,26 @@ import AnalyticsDashboard from '../components/AnalyticsDashboard';
 import { 
   initDB, getAllReports, getAllCrews, addReport, getReportStats, 
   saveAllReports, saveAllCrews, getReportsByEmail, resetDB,
-  loginUser, registerUser, supportReport,
+  loginUser, registerUser, supportReport, loadDemoData, clearDemoData,
+  updateReport, getDraftReports,
   type Report, type Crew
 } from '../lib/db';
 
 // Cargar dinámicamente componentes Leaflet
 const MapDashboard = dynamic(() => import('../components/MapDashboard'), { 
   ssr: false,
-  loading: () => <div className="h-[500px] bg-card flex items-center justify-center rounded-2xl">Cargando mapa de operaciones...</div>
+  loading: () => <div className="h-[500px] bg-card flex items-center justify-center rounded-2xl text-gray-300">Cargando mapa de operaciones...</div>
 });
 
 // Helper para hacer click en el mapa en el portal del ciudadano
 const MapSelector = dynamic(() => import('../components/MapSelector'), { 
   ssr: false,
-  loading: () => <div className="h-64 bg-black/20 animate-pulse rounded-xl border border-white/5 flex items-center justify-center text-xs text-gray-500">Cargando mapa de ubicación...</div>
+  loading: () => <div className="h-64 bg-black/20 animate-pulse rounded-xl border border-white/5 flex items-center justify-center text-xs text-gray-300">Cargando mapa interactivo...</div>
 });
 
 import CrewsPanel from '../components/CrewsPanel';
 import ReportsTable from '../components/ReportsTable';
 import MockMobileSimulator from '../components/MockMobileSimulator';
-
-// No preset photos
 
 export default function AppContainer() {
   // Estado de sesión
@@ -72,6 +71,9 @@ export default function AppContainer() {
     activeCrews: 0
   });
 
+  // Mensaje informativo temporal sobre demo
+  const [demoMessage, setDemoMessage] = useState<string | null>(null);
+
   // Estados del formulario del ciudadano web
   const [citCategory, setCitCategory] = useState<string>('BASURAL');
   const [citDesc, setCitDesc] = useState<string>('');
@@ -83,8 +85,10 @@ export default function AppContainer() {
     lat: -26.828372,
     lng: -65.222312
   });
+  const [isLocationConfirmed, setIsLocationConfirmed] = useState<boolean>(true);
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
-  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [submittedReport, setSubmittedReport] = useState<Report | null>(null);
+  const [isSyncingDrafts, setIsSyncingDrafts] = useState(false);
 
   // Vista del ciudadano: mis reportes vs nuevo reporte
   const [citizenView, setCitizenView] = useState<'new' | 'my_reports'>('new');
@@ -93,7 +97,7 @@ export default function AppContainer() {
   // Filtros globales de métricas para el dashboard de operador
   const [metricFilter, setMetricFilter] = useState<string>('ALL');
 
-  const categoryDistribution = React.useMemo(() => {
+  const categoryDistribution = useMemo(() => {
     const counts: Record<string, number> = {
       BASURAL: 0,
       ALCANTARILLA: 0,
@@ -153,8 +157,8 @@ export default function AppContainer() {
         activeCrews: dataStats.activeCrews
       });
       setApiOnline(true);
-    } catch (e) {
-      // ===== MODO OFFLINE: Leer desde localStorage =====
+    } catch {
+      // ===== MODO LOCAL OFFLINE: Leer desde localStorage =====
       const localReports = getAllReports();
       const localCrews = getAllCrews();
       const localStats = getReportStats();
@@ -239,8 +243,6 @@ export default function AppContainer() {
       });
 
       socket.on('newReport', (newRep: any) => {
-        console.log('Nuevo reporte recibido por socket:', newRep);
-        
         setReports(prev => {
           if (prev.some(r => r.id === newRep.id || String(r.id) === String(newRep.id))) return prev;
           return [newRep, ...prev];
@@ -259,14 +261,11 @@ export default function AppContainer() {
     };
   }, [apiOnline, backendUrl, addToast, loadData]);
 
-
-
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 5000);
     return () => clearInterval(interval);
   }, [loadData]);
-
 
   // Manejar Login
   const handleLoginSubmit = (e: React.FormEvent) => {
@@ -282,7 +281,6 @@ export default function AppContainer() {
 
     setUser(res.session);
 
-    // Recargar datos al loguearse (para ver reportes actualizados)
     setTimeout(() => loadData(), 100);
 
     if (res.session?.role === 'CITIZEN') {
@@ -313,7 +311,6 @@ export default function AppContainer() {
 
     setAuthSuccess('Usuario registrado con éxito. Iniciando sesión...');
     
-    // Auto-login tras registro
     setTimeout(() => {
       setUser({
         id: res.user?.id,
@@ -326,7 +323,6 @@ export default function AppContainer() {
       });
       loadData();
       
-      // Limpiar campos
       setRegFullName('');
       setRegEmail('');
       setRegPassword('');
@@ -338,12 +334,13 @@ export default function AppContainer() {
         setActiveTab('map'); 
         setCitizenView('new');
       }
-    }, 1500);
+    }, 1200);
   };
 
+  // Cuentas demo preconfiguradas (100% ficticias para privacidad)
   const handlePreFill = (role: 'OPERATOR' | 'CITIZEN') => {
     setLoginRole(role);
-    setLoginEmail(role === 'OPERATOR' ? 'operador@ecotuc.gov.ar' : 'ciudadano1@gmail.com');
+    setLoginEmail(role === 'OPERATOR' ? 'operador.demo@ecotuc.local' : 'ciudadano.demo@ecotuc.local');
     setLoginPassword('password123');
     setAuthError(null);
   };
@@ -363,7 +360,6 @@ export default function AppContainer() {
         console.error('Error al eliminar reporte:', e);
       }
     } else {
-      // Flujo local
       const updatedReports = reports.filter(r => r.id !== reportId);
       setReports(updatedReports);
       saveAllReports(updatedReports);
@@ -371,9 +367,79 @@ export default function AppContainer() {
     }
   };
 
+  // Controladores de gestión de datos de demostración
+  const handleLoadDemo = () => {
+    if (!confirm('¿Deseas cargar el conjunto de incidencias de prueba para explorar el flujo en Tucumán?')) return;
+    loadDemoData();
+    loadData();
+    setDemoMessage('Incidencias de demostración cargadas correctamente.');
+    setTimeout(() => setDemoMessage(null), 4000);
+  };
+
+  const handleClearDemo = () => {
+    if (!confirm('¿Deseas limpiar todos los registros de demostración? Se conservarán los reportes creados por usuarios.')) return;
+    clearDemoData();
+    loadData();
+    setDemoMessage('Registros de demostración eliminados.');
+    setTimeout(() => setDemoMessage(null), 4000);
+  };
+
+  const handleResetDB = () => {
+    if (!confirm('¿Estás seguro de reiniciar la base de datos a un estado limpio sin reportes?')) return;
+    resetDB(false);
+    loadData();
+    setDemoMessage('Base de datos reseteada a estado limpio.');
+    setTimeout(() => setDemoMessage(null), 4000);
+  };
+
+  // Sincronización de borradores locales con el backend
+  const handleSyncDrafts = async () => {
+    if (!apiOnline) {
+      alert('El servidor backend no está disponible en este momento. Los borradores siguen guardados localmente.');
+      return;
+    }
+
+    const drafts = reports.filter(r => r.isDraft === true);
+    if (drafts.length === 0) return;
+
+    setIsSyncingDrafts(true);
+    let successCount = 0;
+
+    for (const draft of drafts) {
+      try {
+        const payload = {
+          citizenId: user?.id || 'c7c5a81e-927b-4029-bb88-29470c634b33',
+          category: draft.category as any,
+          description: draft.description.replace('[BORRADOR OFFLINE] ', ''),
+          latitude: draft.latitude,
+          longitude: draft.longitude,
+          imageUrl: draft.imageUrl || '/uploads/placeholder.jpg',
+        };
+
+        const res = await fetch(`${backendUrl}/reports`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          successCount++;
+          updateReport(draft.id, { isDraft: false });
+        }
+      } catch (err) {
+        console.error('Error al sincronizar borrador:', err);
+      }
+    }
+
+    loadData();
+    setIsSyncingDrafts(false);
+    alert(`Se sincronizaron con éxito ${successCount} reporte(s) con el servidor central.`);
+  };
+
   // Buscar dirección con Nominatim
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
 
+  // Solicitar ubicación GPS explícitamente tras clic del usuario
   const handleGPSLocation = () => {
     if (!navigator.geolocation) {
       alert("La geolocalización no es compatible con este navegador.");
@@ -386,6 +452,7 @@ export default function AppContainer() {
         setCitCoords({ lat: latitude, lng: longitude });
         setLocationInput(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
         setLocationFeedback("Ubicación GPS obtenida con éxito.");
+        setIsLocationConfirmed(true);
       },
       (error) => {
         console.error(error);
@@ -398,7 +465,7 @@ export default function AppContainer() {
   const handleSearchAddress = async () => {
     if (!locationInput.trim()) return;
     setIsSearchingAddress(true);
-    setLocationFeedback("Buscando dirección...");
+    setLocationFeedback("Buscando dirección en Tucumán...");
     try {
       const query = encodeURIComponent(`${locationInput}, Tucumán, Argentina`);
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`);
@@ -408,22 +475,22 @@ export default function AppContainer() {
           const lat = parseFloat(data[0].lat);
           const lng = parseFloat(data[0].lon);
           setCitCoords({ lat, lng });
-          setLocationFeedback(`Dirección: ${data[0].display_name.split(',')[0]}`);
+          setLocationFeedback(`Dirección encontrada: ${data[0].display_name.split(',')[0]}`);
+          setIsLocationConfirmed(true);
         } else {
           processLocationInput(locationInput);
         }
       } else {
         processLocationInput(locationInput);
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
       processLocationInput(locationInput);
     } finally {
       setIsSearchingAddress(false);
     }
   };
 
-  // Helper para convertir formato DMS (Grados Minutos Segundos) a Decimal
+  // Helper para convertir formato DMS a Decimal
   const parseDMS = (dmsStr: string): number | null => {
     const regex = /(\d+)\s*[°d]\s*(\d+)\s*['m]\s*(\d+(?:\.\d+)?)\s*["s]\s*([NSEWnsew])/i;
     const match = dmsStr.match(regex);
@@ -441,7 +508,7 @@ export default function AppContainer() {
     return decimal;
   };
 
-  // Procesador inteligente de pegado de ubicación (coordenadas / enlace de maps)
+  // Procesador de coordenadas o enlaces de mapa
   const processLocationInput = (val: string) => {
     setLocationInput(val);
     if (!val.trim()) {
@@ -449,19 +516,20 @@ export default function AppContainer() {
       return;
     }
 
-    // 1. Intentar parsear formato DMS (e.g. "26°49'42.1"S 65°13'20.3"W")
+    // 1. Formato DMS
     const dmsMatches = val.match(/(\d+\s*[°d]\s*\d+\s*['m]\s*\d+(?:\.\d+)?\s*["s]\s*[NSns])\s*[, \t]?\s*(\d+\s*[°d]\s*\d+\s*['m]\s*\d+(?:\.\d+)?\s*["s]\s*[EWew])/i);
     if (dmsMatches) {
       const latDec = parseDMS(dmsMatches[1]);
       const lngDec = parseDMS(dmsMatches[2]);
       if (latDec !== null && lngDec !== null) {
         setCitCoords({ lat: latDec, lng: lngDec });
-        setLocationFeedback('Coordenadas DMS de Google Maps procesadas y convertidas.');
+        setLocationFeedback('Coordenadas DMS reconocidas y convertidas.');
+        setIsLocationConfirmed(true);
         return;
       }
     }
 
-    // 2. Intentar buscar coordenadas decimales "lat,lng" dentro de cualquier URL de Google Maps
+    // 2. Coordenadas dentro de URL de Maps
     const urlCoordsRegex = /(?:place\/|query=|q=|@)(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/;
     const matchUrl = val.match(urlCoordsRegex);
     if (matchUrl) {
@@ -469,10 +537,11 @@ export default function AppContainer() {
       const lng = parseFloat(matchUrl[2]);
       setCitCoords({ lat, lng });
       setLocationFeedback('Enlace de Google Maps procesado con éxito.');
+      setIsLocationConfirmed(true);
       return;
     }
 
-    // 3. Intentar parsear coordenadas decimales simples "lat, lng" o "lat lng"
+    // 3. Coordenadas decimales simples
     const coordsRegex = /(-?\d+\.\d{3,})\s*[, \t]\s*(-?\d+\.\d{3,})/;
     const matchCoords = val.match(coordsRegex);
     if (matchCoords) {
@@ -481,30 +550,29 @@ export default function AppContainer() {
       
       if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
         setCitCoords({ lat, lng });
-        setLocationFeedback('Coordenadas decimales copiadas de Maps detectadas.');
+        setLocationFeedback('Coordenadas decimales detectadas.');
+        setIsLocationConfirmed(true);
         return;
       }
     }
 
-    // 4. Simulación de Geocodificador de dirección de Tucumán
-    let hash = 0;
-    for (let i = 0; i < val.length; i++) {
-      hash = val.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const offsetLat = (hash % 100) / 4000; 
-    const offsetLng = ((hash >> 2) % 100) / 4000;
-    
-    const geocodedLat = -26.828372 + offsetLat;
-    const geocodedLng = -65.222312 + offsetLng;
-
-    setCitCoords({ lat: geocodedLat, lng: geocodedLng });
-    setLocationFeedback('Dirección interpretada (Geocodificador Simulado).');
+    // Si es texto de calle, orientar a pulsar Buscar
+    setLocationFeedback('Presiona Enter o el botón de búsqueda para ubicar la dirección en el mapa.');
   };
 
-  // Crear reporte desde Ciudadano Web — PERSISTENTE
+  // Validación de formulario ciudadano
+  const isFormValid = Boolean(
+    customPhoto && 
+    citDesc.trim().length >= 10 && 
+    citCategory &&
+    citCoords.lat &&
+    citCoords.lng
+  );
+
+  // Crear reporte desde Ciudadano Web
   const handleCitizenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customPhoto) return;
+    if (!isFormValid) return;
     setIsSubmittingReport(true);
 
     const priority = citCategory === 'PELIGROSO' ? 'CRITICA' 
@@ -517,11 +585,11 @@ export default function AppContainer() {
       : citCategory === 'ALCANTARILLA' ? 75 
       : 50;
 
-    let reportPhotoUrl = customPhoto;
+    let reportPhotoUrl = customPhoto as string;
 
     const reportData = {
       category: citCategory,
-      description: citDesc,
+      description: citDesc.trim(),
       imageUrl: reportPhotoUrl,
       latitude: citCoords.lat,
       longitude: citCoords.lng,
@@ -530,15 +598,15 @@ export default function AppContainer() {
       status: 'PENDIENTE',
       crewId: null,
       observations: null,
-      citizenEmail: user?.email || 'anonimo@ecotuc.com',
-      citizenName: user?.fullName || 'Ciudadano Anónimo',
+      citizenEmail: user?.email || 'ciudadano.demo@ecotuc.local',
+      citizenName: user?.fullName || 'Ciudadano Tucumán',
       upvotes: 0,
       supportedBy: [],
+      isDraft: false,
     };
 
     if (apiOnline) {
       try {
-        // Si hay una foto personalizada y estamos online, subirla primero al backend
         if (customFile) {
           const formData = new FormData();
           formData.append('image', customFile);
@@ -555,9 +623,9 @@ export default function AppContainer() {
         }
 
         const payload = {
-          citizenId: 'c7c5a81e-927b-4029-bb88-29470c634b33',
+          citizenId: user?.id || 'c7c5a81e-927b-4029-bb88-29470c634b33',
           category: citCategory as any,
-          description: citDesc,
+          description: citDesc.trim(),
           latitude: citCoords.lat,
           longitude: citCoords.lng,
           imageUrl: reportPhotoUrl
@@ -568,8 +636,10 @@ export default function AppContainer() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+
         if (res.ok) {
-          setShowSuccessAlert(true);
+          const createdApiReport = await res.json();
+          setSubmittedReport(createdApiReport);
           setCitDesc('');
           setCustomPhoto(null);
           setCustomFile(null);
@@ -581,14 +651,13 @@ export default function AppContainer() {
         }
       } catch (err) {
         console.warn('Fallo al guardar en API, guardando en local storage:', err);
-        // Fallback local
         const newReport = addReport(reportData);
         setReports(getAllReports());
         setStats(getReportStats());
         const event = new CustomEvent('ecotuc:new-report', { detail: newReport });
         window.dispatchEvent(event);
 
-        setShowSuccessAlert(true);
+        setSubmittedReport(newReport);
         setCitDesc('');
         setCustomPhoto(null);
         setCustomFile(null);
@@ -598,11 +667,9 @@ export default function AppContainer() {
         setIsSubmittingReport(false);
       }
     } else {
-      // ===== GUARDAR EN BASE DE DATOS LOCAL (localStorage) =====
+      // Guardar en almacenamiento local
       setTimeout(() => {
         const newReport = addReport(reportData);
-
-        // Recargar todo desde la DB local
         const updatedReports = getAllReports();
         const updatedStats = getReportStats();
 
@@ -612,21 +679,21 @@ export default function AppContainer() {
         const event = new CustomEvent('ecotuc:new-report', { detail: newReport });
         window.dispatchEvent(event);
 
-        setShowSuccessAlert(true);
+        setSubmittedReport(newReport);
         setCitDesc('');
         setCustomPhoto(null);
         setCustomFile(null);
         setLocationInput('');
         setLocationFeedback('');
         setIsSubmittingReport(false);
-      }, 600);
+      }, 500);
     }
   };
 
-  // Crear reporte offline de manera manual (bypasseando API para pruebas o trabajo sin red)
+  // Crear reporte offline de manera manual (modo borrador)
   const handleOfflineSubmit = () => {
-    if (!customPhoto) {
-      alert("Es necesario cargar una fotografía para reportar de forma offline.");
+    if (!isFormValid) {
+      alert("Completa todos los campos obligatorios: Fotografía, Ubicación y Descripción (mín. 10 caracteres).");
       return;
     }
     setIsSubmittingReport(true);
@@ -643,24 +710,24 @@ export default function AppContainer() {
 
     const reportData = {
       category: citCategory,
-      description: citDesc,
-      imageUrl: customPhoto,
+      description: `[BORRADOR OFFLINE] ${citDesc.trim()}`,
+      imageUrl: customPhoto as string,
       latitude: citCoords.lat,
       longitude: citCoords.lng,
       priority,
       priorityScore: score,
       status: 'PENDIENTE',
       crewId: null,
-      observations: null,
-      citizenEmail: user?.email || 'anonimo@ecotuc.com',
-      citizenName: user?.fullName || 'Ciudadano Anónimo',
+      observations: 'Reporte registrado en modo borrador offline.',
+      citizenEmail: user?.email || 'ciudadano.demo@ecotuc.local',
+      citizenName: user?.fullName || 'Ciudadano Tucumán',
       upvotes: 0,
       supportedBy: [],
+      isDraft: true,
     };
 
     setTimeout(() => {
       const newReport = addReport(reportData);
-
       const updatedReports = getAllReports();
       const updatedStats = getReportStats();
 
@@ -670,18 +737,25 @@ export default function AppContainer() {
       const event = new CustomEvent('ecotuc:new-report', { detail: newReport });
       window.dispatchEvent(event);
 
-      setShowSuccessAlert(true);
+      setSubmittedReport(newReport);
       setCitDesc('');
       setCustomPhoto(null);
       setCustomFile(null);
       setLocationInput('');
       setLocationFeedback('');
       setIsSubmittingReport(false);
-    }, 600);
+    }, 500);
   };
 
   // Calcular reportes del ciudadano actual
-  const myReports = user?.email ? getReportsByEmail(user.email) : [];
+  const myReports = useMemo(() => {
+    if (!user?.email) return [];
+    return reports.filter(r => r.citizenEmail?.toLowerCase() === user.email.toLowerCase());
+  }, [reports, user?.email]);
+
+  const draftReports = useMemo(() => {
+    return myReports.filter(r => r.isDraft === true);
+  }, [myReports]);
 
   // Helper para badge de estado
   const statusBadge = (status: string) => {
@@ -711,13 +785,20 @@ export default function AppContainer() {
               <img src="/logo.png" alt="EcoTuc Logo" className="object-cover w-full h-full" />
             </div>
             <h2 className="text-2xl font-bold tracking-tight text-white">EcoTuc</h2>
-            <p className="text-xs text-gray-400">Sistema Inteligente para Reportes y Recolección Urbana</p>
+            <p className="text-xs text-gray-300">Gestión Inteligente de Microbasurales en Tucumán</p>
           </div>
 
-          {/* Indicador de DB */}
-          <div className="flex items-center justify-center gap-2 text-[10px] text-gray-500">
-            <Database className="h-3 w-3" />
-            <span>Base de datos local activa — Persistencia de reportes y usuarios</span>
+          {/* Aclaración transparente de Base de Datos y Persistencia */}
+          <div className="flex flex-col items-center justify-center gap-1 text-[11px] text-gray-300 bg-cardLight/40 p-3 rounded-2xl border border-white/5">
+            <div className="flex items-center gap-1.5 text-primary font-semibold">
+              <Database className="h-3.5 w-3.5" />
+              <span>{apiOnline ? 'Conectado a Servidor Central (PostgreSQL)' : 'Almacenamiento Local (Navegador - localStorage)'}</span>
+            </div>
+            <p className="text-[10px] text-gray-400 text-center max-w-xs leading-normal">
+              {apiOnline 
+                ? 'Los datos se sincronizan con la base central compartida.' 
+                : 'Los datos residen en la memoria local de este navegador. Al iniciar el backend con PostgreSQL se sincronizan en red.'}
+            </p>
           </div>
 
           {/* Mensajes de Feedback */}
@@ -742,8 +823,8 @@ export default function AppContainer() {
                 <button
                   type="button"
                   onClick={() => setLoginRole('OPERATOR')}
-                  className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-                    loginRole === 'OPERATOR' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'
+                  className={`py-2 text-xs font-semibold rounded-lg transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+                    loginRole === 'OPERATOR' ? 'bg-primary text-white shadow-md' : 'text-gray-300 hover:text-white'
                   }`}
                 >
                   Operador Municipal
@@ -751,8 +832,8 @@ export default function AppContainer() {
                 <button
                   type="button"
                   onClick={() => setLoginRole('CITIZEN')}
-                  className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-                    loginRole === 'CITIZEN' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'
+                  className={`py-2 text-xs font-semibold rounded-lg transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+                    loginRole === 'CITIZEN' ? 'bg-primary text-white shadow-md' : 'text-gray-300 hover:text-white'
                   }`}
                 >
                   Ciudadano
@@ -769,6 +850,7 @@ export default function AppContainer() {
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    aria-label="Correo electrónico para iniciar sesión"
                   />
                 </div>
                 <div className="flex items-center gap-2.5 bg-cardLight/50 p-3.5 rounded-xl border border-white/5">
@@ -780,13 +862,14 @@ export default function AppContainer() {
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    aria-label="Contraseña para iniciar sesión"
                   />
                 </div>
               </div>
 
               <button 
                 type="submit" 
-                className="bg-primary hover:bg-primary-dark text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                className="bg-primary hover:bg-primary-dark text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer"
               >
                 Ingresar a la Plataforma
               </button>
@@ -799,7 +882,7 @@ export default function AppContainer() {
                     setAuthError(null);
                     setAuthSuccess(null);
                   }}
-                  className="text-xs text-primary hover:underline"
+                  className="text-xs text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded p-1"
                 >
                   ¿No tienes una cuenta? Regístrate aquí
                 </button>
@@ -808,15 +891,14 @@ export default function AppContainer() {
           ) : (
             /* --- FORMULARIO DE REGISTRO DE NUEVO USUARIO --- */
             <form onSubmit={handleRegisterSubmit} className="flex flex-col gap-4">
-              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider text-center font-sans">Registrar Nuevo Usuario</span>
+              <span className="text-[10px] text-gray-300 font-bold uppercase tracking-wider text-center font-sans">Registrar Nuevo Usuario</span>
               
-              {/* Selección de Rol en Registro */}
               <div className="grid grid-cols-2 gap-3 p-1 bg-black/30 rounded-xl border border-white/5">
                 <button
                   type="button"
                   onClick={() => setRegRole('OPERATOR')}
-                  className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-                    regRole === 'OPERATOR' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'
+                  className={`py-2 text-xs font-semibold rounded-lg transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+                    regRole === 'OPERATOR' ? 'bg-primary text-white shadow-md' : 'text-gray-300 hover:text-white'
                   }`}
                 >
                   Operador Municipal
@@ -824,8 +906,8 @@ export default function AppContainer() {
                 <button
                   type="button"
                   onClick={() => setRegRole('CITIZEN')}
-                  className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-                    regRole === 'CITIZEN' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'
+                  className={`py-2 text-xs font-semibold rounded-lg transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+                    regRole === 'CITIZEN' ? 'bg-primary text-white shadow-md' : 'text-gray-300 hover:text-white'
                   }`}
                 >
                   Ciudadano
@@ -833,7 +915,6 @@ export default function AppContainer() {
               </div>
 
               <div className="flex flex-col gap-3 max-h-[300px] overflow-y-auto pr-1 select-custom-scroll">
-                {/* Nombre Completo */}
                 <div className="flex items-center gap-2.5 bg-cardLight/50 p-3 rounded-xl border border-white/5">
                   <User className="h-4 w-4 text-gray-400" />
                   <input 
@@ -843,10 +924,10 @@ export default function AppContainer() {
                     value={regFullName}
                     onChange={(e) => setRegFullName(e.target.value)}
                     className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    aria-label="Nombre completo"
                   />
                 </div>
 
-                {/* Correo Electrónico */}
                 <div className="flex items-center gap-2.5 bg-cardLight/50 p-3 rounded-xl border border-white/5">
                   <Mail className="h-4 w-4 text-gray-400" />
                   <input 
@@ -856,10 +937,10 @@ export default function AppContainer() {
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
                     className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    aria-label="Correo electrónico para registrarse"
                   />
                 </div>
 
-                {/* Contraseña */}
                 <div className="flex items-center gap-2.5 bg-cardLight/50 p-3 rounded-xl border border-white/5">
                   <Lock className="h-4 w-4 text-gray-400" />
                   <input 
@@ -870,10 +951,10 @@ export default function AppContainer() {
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
                     className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    aria-label="Contraseña"
                   />
                 </div>
 
-                {/* Teléfono */}
                 <div className="flex items-center gap-2.5 bg-cardLight/50 p-3 rounded-xl border border-white/5">
                   <Phone className="h-4 w-4 text-gray-400" />
                   <input 
@@ -883,25 +964,26 @@ export default function AppContainer() {
                     value={regPhone}
                     onChange={(e) => setRegPhone(e.target.value)}
                     className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    aria-label="Teléfono de contacto"
                   />
                 </div>
 
-                {/* Dirección */}
                 <div className="flex items-center gap-2.5 bg-cardLight/50 p-3 rounded-xl border border-white/5">
                   <Home className="h-4 w-4 text-gray-400" />
                   <input 
                     type="text" 
-                    placeholder="Dirección (Calle, Altura / Barrio) (Opcional)"
+                    placeholder="Dirección o Barrio en Tucumán (Opcional)"
                     value={regAddress}
                     onChange={(e) => setRegAddress(e.target.value)}
                     className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    aria-label="Dirección o barrio"
                   />
                 </div>
               </div>
 
               <button 
                 type="submit" 
-                className="bg-primary hover:bg-primary-dark text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                className="bg-primary hover:bg-primary-dark text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer"
               >
                 Completar Registro y Entrar
               </button>
@@ -914,7 +996,7 @@ export default function AppContainer() {
                     setAuthError(null);
                     setAuthSuccess(null);
                   }}
-                  className="text-xs text-primary hover:underline"
+                  className="text-xs text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded p-1"
                 >
                   ¿Ya tienes cuenta? Inicia sesión aquí
                 </button>
@@ -922,24 +1004,26 @@ export default function AppContainer() {
             </form>
           )}
 
-          {/* Botones de Prellenado para prueba rápida (Sólo visible en modo login) */}
+          {/* Botones de Prellenado con Cuentas Demo Ficticias */}
           {authMode === 'login' && (
             <div className="border-t border-white/5 pt-4 flex flex-col gap-2">
-              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider text-center">Credenciales de prueba rápida:</span>
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider text-center">Acceso rápido con cuentas demo:</span>
               <div className="grid grid-cols-2 gap-2">
                 <button 
                   type="button"
                   onClick={() => handlePreFill('OPERATOR')}
-                  className="bg-cardLight hover:bg-gray-800 text-[10px] text-gray-300 py-2 rounded-lg border border-white/5"
+                  className="bg-cardLight hover:bg-gray-800 text-[10px] text-gray-200 py-2 rounded-lg border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none transition-all cursor-pointer"
+                  aria-label="Iniciar sesión con cuenta de operador demo"
                 >
-                  🔑 Rol Operador
+                  🔑 Operador (Demo)
                 </button>
                 <button 
                   type="button"
                   onClick={() => handlePreFill('CITIZEN')}
-                  className="bg-cardLight hover:bg-gray-800 text-[10px] text-gray-300 py-2 rounded-lg border border-white/5"
+                  className="bg-cardLight hover:bg-gray-800 text-[10px] text-gray-200 py-2 rounded-lg border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none transition-all cursor-pointer"
+                  aria-label="Iniciar sesión con cuenta de ciudadano demo"
                 >
-                  🔑 Rol Ciudadano
+                  🔑 Ciudadano (Demo)
                 </button>
               </div>
             </div>
@@ -953,9 +1037,10 @@ export default function AppContainer() {
   if (user.role === 'CITIZEN') {
     return (
       <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans relative overflow-hidden">
-        {/* Luces de fondo animadas premium */}
+        {/* Luces de fondo animadas */}
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none animate-float-1"></div>
         <div className="absolute bottom-[20%] right-[-5%] w-[450px] h-[450px] bg-accent-purple/5 rounded-full blur-[100px] pointer-events-none animate-float-2"></div>
+        
         {/* Navbar Ciudadano */}
         <header className="w-full glass-panel sticky top-0 z-40 border-b border-white/5 py-4 px-6 md:px-12 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -969,10 +1054,17 @@ export default function AppContainer() {
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="text-xs text-gray-300 font-semibold">{user.fullName}</span>
+            {/* Indicador de persistencia */}
+            <div className="hidden sm:flex items-center gap-1.5 text-[11px] bg-cardLight/50 px-3 py-1.5 rounded-full border border-white/5 text-gray-300">
+              <Database className="h-3.5 w-3.5 text-primary" />
+              <span>{apiOnline ? 'Servidor Central' : 'Almacenamiento Local (Navegador)'}</span>
+            </div>
+
+            <span className="text-xs text-gray-200 font-semibold">{user.fullName}</span>
             <button 
               onClick={() => setUser(null)}
-              className="text-red-400 hover:text-red-300 flex items-center gap-1.5 text-xs bg-red-500/10 py-1.5 px-3 rounded-lg border border-red-500/20"
+              className="text-red-400 hover:text-red-300 flex items-center gap-1.5 text-xs bg-red-500/10 py-1.5 px-3 rounded-lg border border-red-500/20 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer"
+              aria-label="Cerrar sesión"
             >
               <LogOut className="h-3.5 w-3.5" /> Salir
             </button>
@@ -984,7 +1076,7 @@ export default function AppContainer() {
           <div className="flex bg-card/60 p-1.5 rounded-xl border border-white/5 self-start gap-1 w-fit">
             <button 
               onClick={() => setCitizenView('new')}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
                 citizenView === 'new' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -993,7 +1085,7 @@ export default function AppContainer() {
             </button>
             <button 
               onClick={() => { setCitizenView('my_reports'); loadData(); }}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
                 citizenView === 'my_reports' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -1003,26 +1095,69 @@ export default function AppContainer() {
           </div>
         </div>
 
-        {/* ALERTA DE EXITO REPORTES */}
-        {showSuccessAlert && (
-          <div className="mx-6 md:mx-12 mt-4 bg-primary/10 border border-primary/20 p-4 rounded-2xl flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="h-5 w-5 text-primary" />
+        {/* MODAL / TARJETA DE CONFIRMACIÓN CLARA DEL REPORTE CREADO */}
+        {submittedReport && (
+          <div className="mx-6 md:mx-12 mt-4 bg-emerald-950/50 border border-emerald-500/40 p-5 rounded-2xl flex flex-col gap-3 shadow-2xl animate-in fade-in slide-in-from-top-3 duration-300">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl">
+                  <CheckCircle className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">¡Incidencia Reportada con Éxito!</h3>
+                  <p className="text-xs text-gray-300 mt-0.5">
+                    {submittedReport.isDraft 
+                      ? 'El reporte fue guardado como borrador local en este dispositivo.' 
+                      : 'El reporte fue ingresado correctamente y ya está disponible para el equipo operativo municipal.'}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSubmittedReport(null)}
+                className="text-gray-400 hover:text-white text-xs p-1"
+                aria-label="Cerrar confirmación"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-black/30 p-3.5 rounded-xl border border-white/5 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div>
-                <div className="text-sm font-bold text-white">¡Incidencia Reportada con Éxito!</div>
-                <div className="text-xs text-gray-400">Tu reporte fue guardado en la base de datos y será visible para los operadores.</div>
+                <span className="text-[10px] text-gray-400 uppercase font-bold block">Categoría</span>
+                <span className="text-white font-semibold">{submittedReport.category}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-gray-400 uppercase font-bold block">Prioridad Calculada</span>
+                <span className="text-primary font-semibold">{submittedReport.priority} ({submittedReport.priorityScore.toFixed(0)} pts)</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-gray-400 uppercase font-bold block">Ubicación</span>
+                <span className="text-white font-mono">{submittedReport.latitude.toFixed(5)}, {submittedReport.longitude.toFixed(5)}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-gray-400 uppercase font-bold block">Estado</span>
+                <span className="text-amber-400 font-semibold">{submittedReport.status}</span>
               </div>
             </div>
-            <button 
-              onClick={() => setShowSuccessAlert(false)}
-              className="text-primary font-bold text-xs"
-            >
-              Cerrar
-            </button>
+
+            <div className="flex flex-wrap gap-3 pt-1">
+              <button
+                onClick={() => { setCitizenView('my_reports'); setSubmittedReport(null); loadData(); }}
+                className="bg-primary hover:bg-primary-dark text-white text-xs font-bold py-2 px-4 rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                Consultar en "Mis reportes" <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => setSubmittedReport(null)}
+                className="bg-cardLight hover:bg-gray-800 text-gray-300 text-xs py-2 px-4 rounded-xl border border-white/5 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                Crear otro reporte
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Contenido basado en la vista seleccionada con transiciones fluidas */}
+        {/* Contenido basado en la vista seleccionada */}
         <div key={citizenView} className="flex-1 flex flex-col animate-in fade-in-50 slide-in-from-bottom-3 duration-300 ease-out">
           {citizenView === 'new' ? (
             /* ===== FORMULARIO DE NUEVO REPORTE ===== */
@@ -1035,20 +1170,33 @@ export default function AppContainer() {
                   <PlusCircle className="h-5 w-5 text-primary" />
                   Registrar Reporte de Basura
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">Completa los campos e indica el punto en el mapa derecho.</p>
+                <p className="text-xs text-gray-400 mt-1">Completa los campos obligatorios e indica el punto en el mapa de Tucumán.</p>
+              </div>
+
+              {/* Guía explicativa de ubicación */}
+              <div className="bg-cardLight/40 p-3.5 rounded-xl border border-white/5 text-xs flex flex-col gap-1 text-gray-300">
+                <span className="font-semibold text-white flex items-center gap-1.5">
+                  <Info className="h-4 w-4 text-primary flex-shrink-0" />
+                  ¿Cómo se determina la ubicación del reporte?
+                </span>
+                <p className="text-[11px] leading-relaxed text-gray-400">
+                  Haz clic directo sobre el mapa de la derecha o arrastra el marcador verde hasta el lugar exacto. También puedes escribir una calle y pulsar "Buscar", o usar el botón GPS. Verifica que las coordenadas mostradas coincidan con el foco antes de enviar.
+                </p>
               </div>
 
               <form onSubmit={handleCitizenSubmit} className="flex flex-col gap-4">
-                {/* Fotos del basural */}
+                {/* 1. Fotografía (Obligatoria) */}
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs text-gray-400 font-semibold uppercase">Fotografía del Incidente:</label>
+                  <label className="text-xs text-gray-300 font-semibold uppercase flex items-center justify-between">
+                    <span>Fotografía del Incidente <span className="text-primary">*</span>:</span>
+                    {!customPhoto && <span className="text-[10px] text-amber-400 font-normal">Obligatorio</span>}
+                  </label>
                   
-                  {/* Cargar foto real */}
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-3">
-                      <label className="flex-1 flex items-center justify-center gap-2 bg-cardLight/50 hover:bg-gray-800 text-xs text-white p-3.5 rounded-xl border border-dashed border-white/10 hover:border-primary cursor-pointer transition-all">
+                      <label className="flex-1 flex items-center justify-center gap-2 bg-cardLight/50 hover:bg-gray-800 text-xs text-white p-3.5 rounded-xl border border-dashed border-white/10 hover:border-primary cursor-pointer transition-all focus-within:ring-2 focus-within:ring-primary">
                         <Camera className="h-4 w-4 text-primary" />
-                        <span className="font-sans">{customPhoto ? '📷 Cambiar foto cargada' : '📷 Subir foto desde dispositivo'}</span>
+                        <span className="font-sans">{customPhoto ? '📷 Cambiar foto seleccionada' : '📷 Subir foto desde dispositivo'}</span>
                         <input 
                           type="file" 
                           accept="image/*"
@@ -1073,38 +1221,63 @@ export default function AppContainer() {
                             setCustomPhoto(null);
                             setCustomFile(null);
                           }}
-                          className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-3.5 rounded-xl border border-red-500/20 text-xs font-semibold font-sans"
+                          className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-3.5 rounded-xl border border-red-500/20 text-xs font-semibold font-sans focus-visible:ring-2 focus-visible:ring-primary"
                         >
                           Eliminar
                         </button>
                       )}
                     </div>
 
-                    {/* Vista previa de foto cargada */}
                     {customPhoto && (
                       <div className="h-32 w-full rounded-xl overflow-hidden border border-primary/20 relative shadow-inner">
-                        <img src={customPhoto} alt="Vista previa" className="object-cover w-full h-full" />
+                        <img src={customPhoto} alt="Vista previa de foco de basura" className="object-cover w-full h-full" />
                         <div className="absolute top-2 left-2 bg-primary text-[9px] text-white px-2 py-0.5 rounded-full font-bold uppercase font-sans">
-                          Foto del vecino cargada
+                          Foto cargada correctamente
                         </div>
                       </div>
                     )}
                   </div>
-
-
                 </div>
 
-                {/* Input Inteligente de Dirección / Coordenadas / Maps Link */}
+                {/* 2. Categoría (Obligatoria) */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs text-gray-400 font-semibold">Dirección de Tucumán o Coordenadas de Maps:</label>
+                  <label htmlFor="cit-category" className="text-xs text-gray-300 font-semibold">
+                    Categoría de Incidencia <span className="text-primary">*</span>:
+                  </label>
+                  <select
+                    id="cit-category"
+                    value={citCategory}
+                    onChange={(e) => setCitCategory(e.target.value)}
+                    className="bg-cardLight text-xs text-white p-3 rounded-xl border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
+                  >
+                    <option value="BASURAL">Basural Masivo</option>
+                    <option value="ALCANTARILLA">Alcantarilla Tapada</option>
+                    <option value="ESCOMBROS">Escombros</option>
+                    <option value="PELIGROSO">Residuos Peligrosos</option>
+                    <option value="OTROS">Otros</option>
+                  </select>
+                </div>
+
+                {/* 3. Input de Dirección / Coordenadas / Maps Link */}
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="cit-location-input" className="text-xs text-gray-300 font-semibold">
+                    Dirección de Tucumán o Coordenadas de Maps:
+                  </label>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <input 
+                        id="cit-location-input"
                         type="text"
-                        placeholder="Ej: Av. Mate de Luna 2000  o  coordenadas..."
+                        placeholder="Ej: Av. Mate de Luna 2000, o coordenadas..."
                         value={locationInput}
                         onChange={(e) => processLocationInput(e.target.value)}
-                        className="bg-cardLight text-xs text-white p-3.5 pr-10 rounded-xl border border-white/5 focus:outline-none focus:border-primary w-full"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleSearchAddress();
+                          }
+                        }}
+                        className="bg-cardLight text-xs text-white p-3.5 pr-10 rounded-xl border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none w-full"
                       />
                       {locationFeedback && (
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-primary" title={locationFeedback}>
@@ -1118,7 +1291,8 @@ export default function AppContainer() {
                       type="button"
                       onClick={handleGPSLocation}
                       title="Usar mi ubicación GPS actual"
-                      className="bg-primary/10 hover:bg-primary/20 text-primary p-3 rounded-xl border border-primary/20 transition-all flex items-center justify-center"
+                      aria-label="Obtener coordenadas de mi ubicación GPS"
+                      className="bg-primary/10 hover:bg-primary/20 text-primary p-3 rounded-xl border border-primary/20 transition-all flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                     >
                       <MapPin className="h-4 w-4" />
                     </button>
@@ -1129,7 +1303,8 @@ export default function AppContainer() {
                       onClick={handleSearchAddress}
                       disabled={isSearchingAddress}
                       title="Buscar dirección en el mapa"
-                      className="bg-accent-purple/10 hover:bg-accent-purple/20 text-accent-purple p-3 rounded-xl border border-accent-purple/20 transition-all flex items-center justify-center"
+                      aria-label="Buscar dirección ingresada en el mapa"
+                      className="bg-accent-purple/10 hover:bg-accent-purple/20 text-accent-purple p-3 rounded-xl border border-accent-purple/20 transition-all flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                     >
                       {isSearchingAddress ? (
                         <RefreshCw className="h-4 w-4 animate-spin" />
@@ -1143,98 +1318,115 @@ export default function AppContainer() {
                       <Info className="h-3 w-3" /> {locationFeedback}
                     </p>
                   ) : (
-                    <p className="text-[10px] text-gray-500 font-sans">Escribe una dirección y haz clic en actualizar, o usa el GPS del dispositivo.</p>
+                    <p className="text-[10px] text-gray-400 font-sans">Escribe una dirección y pulsa buscar, o haz clic en el mapa derecho.</p>
                   )}
                 </div>
 
-                {/* Categoría */}
+                {/* 4. Descripción (Obligatoria, mín 10 caracteres) */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs text-gray-400 font-semibold">Categoría de Incidencia:</label>
-                  <select
-                    value={citCategory}
-                    onChange={(e) => setCitCategory(e.target.value)}
-                    className="bg-cardLight text-xs text-white p-3 rounded-xl border border-white/5 focus:outline-none focus:border-primary"
-                  >
-                    <option value="BASURAL">Basural Masivo</option>
-                    <option value="ALCANTARILLA">Alcantarilla Tapada</option>
-                    <option value="ESCOMBROS">Escombros</option>
-                    <option value="PELIGROSO">Residuos Peligrosos</option>
-                    <option value="OTROS">Otros</option>
-                  </select>
-                </div>
-
-                {/* Descripción */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs text-gray-400 font-semibold">Observaciones / Descripción:</label>
+                  <div className="flex justify-between items-center text-xs">
+                    <label htmlFor="cit-description" className="text-gray-300 font-semibold">
+                      Descripción del Problema <span className="text-primary">*</span>:
+                    </label>
+                    <span className={`text-[10px] ${citDesc.trim().length >= 10 ? 'text-primary' : 'text-gray-400'}`}>
+                      {citDesc.trim().length}/10 caracteres mín.
+                    </span>
+                  </div>
                   <textarea
+                    id="cit-description"
                     value={citDesc}
                     onChange={(e) => setCitDesc(e.target.value)}
                     rows={3}
-                    placeholder="Describe el estado de acumulación, presencia de plásticos, roedores, etc."
-                    className="bg-cardLight text-xs text-white p-3 rounded-xl border border-white/5 focus:outline-none focus:border-primary resize-none"
+                    placeholder="Describe el estado de acumulación, presencia de plásticos, roedores o peligro..."
+                    className="bg-cardLight text-xs text-white p-3 rounded-xl border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none resize-none"
                   />
+                  {citDesc.length > 0 && citDesc.trim().length < 10 && (
+                    <span className="text-[10px] text-amber-400">Por favor escribe al menos 10 caracteres para que los operadores puedan identificar la situación.</span>
+                  )}
                 </div>
 
-                {/* Coordenadas GPS */}
-                <div className="bg-black/30 p-4 rounded-xl border border-white/5 flex justify-between items-center text-xs">
+                {/* 5. Coordenadas y Confirmación de Ubicación */}
+                <div className="bg-black/30 p-4 rounded-xl border border-white/5 flex flex-wrap justify-between items-center gap-3 text-xs">
                   <div>
-                    <span className="text-gray-400 block text-[10px] uppercase font-bold">Ubicación Seleccionada:</span>
-                    <span className="text-white font-semibold mt-1 block">
+                    <span className="text-gray-400 block text-[10px] uppercase font-bold">Ubicación del Marcador en Mapa:</span>
+                    <span className="text-white font-mono font-semibold mt-1 block">
                       {citCoords.lat.toFixed(6)}, {citCoords.lng.toFixed(6)}
                     </span>
                   </div>
-                  <div className="text-primary font-semibold text-[10px] uppercase bg-primary/10 px-2.5 py-1 rounded-full border border-primary/20">
-                    📍 Geolocalización
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsLocationConfirmed(true)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all focus-visible:ring-2 focus-visible:ring-primary flex items-center gap-1.5 ${
+                      isLocationConfirmed 
+                        ? 'bg-primary/20 text-primary border border-primary/30' 
+                        : 'bg-primary text-white shadow-md'
+                    }`}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    {isLocationConfirmed ? 'Ubicación Confirmada' : 'Confirmar Coordenadas'}
+                  </button>
                 </div>
 
+                {/* Botones de Envío */}
                 <div className="flex flex-col sm:flex-row gap-3 mt-2">
                   <button
                     type="submit"
-                    disabled={!customPhoto || isSubmittingReport}
-                    className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg ${
-                      !customPhoto || isSubmittingReport
+                    disabled={!isFormValid || isSubmittingReport}
+                    className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+                      !isFormValid || isSubmittingReport
                         ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-white/5'
-                        : 'bg-primary hover:bg-primary-dark text-white shadow-primary/20'
+                        : 'bg-primary hover:bg-primary-dark text-white shadow-primary/20 cursor-pointer'
                     }`}
                   >
                     <Send className="h-4 w-4" />
-                    {isSubmittingReport ? 'Enviando...' : 'Enviar Reporte (Online)'}
+                    {isSubmittingReport ? 'Enviando Reporte...' : 'Enviar Reporte (Online)'}
                   </button>
                   <button
                     type="button"
                     onClick={handleOfflineSubmit}
-                    disabled={!customPhoto || isSubmittingReport}
-                    className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg border ${
-                      !customPhoto || isSubmittingReport
+                    disabled={!isFormValid || isSubmittingReport}
+                    className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg border focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+                      !isFormValid || isSubmittingReport
                         ? 'bg-gray-900 text-gray-600 border-white/5 cursor-not-allowed'
-                        : 'bg-cardLight hover:bg-gray-800 text-white border-white/10'
+                        : 'bg-cardLight hover:bg-gray-800 text-white border-white/10 cursor-pointer'
                     }`}
                   >
                     <Database className="h-4 w-4 text-primary" />
-                    Reportar Offline (Borrador)
+                    Guardar Borrador Offline
                   </button>
                 </div>
+
+                {/* Mensaje de validación si faltan campos */}
+                {!isFormValid && (
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Para habilitar el envío: {!customPhoto && '• Adjunta una foto. '}{citDesc.trim().length < 10 && '• Completa la descripción (mín. 10 carac.). '}
+                  </p>
+                )}
               </form>
             </div>
 
             {/* Selector de Mapa para Citizen */}
             <div className="flex flex-col gap-4">
               <div className="glass-card p-4 rounded-2xl flex items-center justify-between text-xs">
-                <span className="text-gray-300 font-bold flex items-center gap-2">
+                <span className="text-gray-200 font-bold flex items-center gap-2">
                   <MapPin className="h-4.5 w-4.5 text-primary" />
-                  Haz clic en el mapa de Tucumán para ubicar el basural
+                  Haz clic o arrastra el marcador para ubicar el basural
                 </span>
-                <span className="text-gray-400">Interactúa con el selector</span>
+                <span className="text-gray-400 font-mono text-[11px]">
+                  {citCoords.lat.toFixed(4)}, {citCoords.lng.toFixed(4)}
+                </span>
               </div>
 
               <div className="rounded-2xl overflow-hidden border border-white/5 h-[480px] shadow-2xl">
                 <MapSelector 
                   coords={citCoords} 
+                  isConfirmed={isLocationConfirmed}
+                  onConfirm={() => setIsLocationConfirmed(true)}
                   onChange={(latlng) => {
                     setCitCoords({ lat: latlng.lat, lng: latlng.lng });
                     setLocationInput(`${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`);
-                    setLocationFeedback('Ubicación seleccionada en el mapa.');
+                    setLocationFeedback('Punto seleccionado en el mapa interactivo.');
+                    setIsLocationConfirmed(true);
                   }} 
                 />
               </div>
@@ -1244,13 +1436,39 @@ export default function AppContainer() {
           /* ===== MIS REPORTES / REPORTES DEL BARRIO ===== */
           <main className="flex-1 p-6 md:px-12 pb-12">
             <div className="glass-card p-6 md:p-8 rounded-2xl">
+              {/* Notificación de Borradores Pendientes de Sincronización */}
+              {draftReports.length > 0 && (
+                <div className="mb-6 bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-200">
+                  <div className="flex items-center gap-2.5">
+                    <Database className="h-5 w-5 text-amber-400 flex-shrink-0" />
+                    <div>
+                      <strong className="text-white block font-semibold">Tienes {draftReports.length} reporte(s) guardado(s) como borrador offline</strong>
+                      <span className="text-[11px] text-amber-300">
+                        {apiOnline 
+                          ? 'El servidor central está online. Puedes sincronizarlos ahora.' 
+                          : 'Están guardados en tu navegador y se sincronizarán al conectar con el servidor.'}
+                      </span>
+                    </div>
+                  </div>
+                  {apiOnline && (
+                    <button
+                      onClick={handleSyncDrafts}
+                      disabled={isSyncingDrafts}
+                      className="bg-amber-500 hover:bg-amber-600 text-black font-bold px-4 py-2 rounded-xl text-xs shadow-md transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-amber-400"
+                    >
+                      {isSyncingDrafts ? 'Sincronizando...' : 'Sincronizar ahora'}
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div>
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
                     <ClipboardList className="h-5 w-5 text-primary" />
                     {citizenReportFilter === 'mine' ? 'Mis Reportes Enviados' : 'Incidencias del Barrio'}
                   </h3>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-gray-300 mt-1">
                     {citizenReportFilter === 'mine' 
                       ? 'Historial de incidencias reportadas con tu cuenta.' 
                       : 'Apoya los reportes de otros vecinos para alertar al municipio con mayor prioridad.'}
@@ -1262,25 +1480,26 @@ export default function AppContainer() {
                   <div className="flex bg-black/30 p-1 rounded-xl border border-white/5 text-xs">
                     <button
                       onClick={() => setCitizenReportFilter('mine')}
-                      className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                        citizenReportFilter === 'mine' ? 'bg-primary text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                      className={`px-4 py-2 rounded-lg font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+                        citizenReportFilter === 'mine' ? 'bg-primary text-white shadow-sm' : 'text-gray-300 hover:text-white'
                       }`}
                     >
-                      Mis Reportes
+                      Mis Reportes ({myReports.length})
                     </button>
                     <button
                       onClick={() => setCitizenReportFilter('all')}
-                      className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                        citizenReportFilter === 'all' ? 'bg-primary text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                      className={`px-4 py-2 rounded-lg font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+                        citizenReportFilter === 'all' ? 'bg-primary text-white shadow-sm' : 'text-gray-300 hover:text-white'
                       }`}
                     >
-                      Reportes del Barrio
+                      Reportes del Barrio ({reports.length})
                     </button>
                   </div>
 
                   <button
                     onClick={loadData}
-                    className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5 bg-cardLight px-3.5 py-2.5 rounded-xl border border-white/5"
+                    aria-label="Actualizar lista de reportes"
+                    className="text-xs text-gray-300 hover:text-white flex items-center gap-1.5 bg-cardLight px-3.5 py-2.5 rounded-xl border border-white/5 focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <RefreshCw className="h-3.5 w-3.5" /> Actualizar
                   </button>
@@ -1291,14 +1510,14 @@ export default function AppContainer() {
               {((citizenReportFilter === 'mine' ? myReports : reports).length === 0) ? (
                 <div className="text-center py-16 flex flex-col items-center gap-4">
                   <div className="p-4 rounded-2xl bg-cardLight/50 border border-white/5">
-                    <ClipboardList className="h-10 w-10 text-gray-500" />
+                    <ClipboardList className="h-10 w-10 text-gray-400" />
                   </div>
                   <div>
-                    <p className="text-sm text-gray-300 font-semibold">No se encontraron reportes</p>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-sm text-gray-200 font-semibold">No se encontraron reportes</p>
+                    <p className="text-xs text-gray-400 mt-1">
                       {citizenReportFilter === 'mine' 
                         ? 'Crea tu primer reporte desde la pestaña "Nuevo Reporte".' 
-                        : 'No hay reportes activos registrados por vecinos.'}
+                        : 'No hay reportes activos registrados por vecinos en este momento.'}
                     </p>
                   </div>
                 </div>
@@ -1307,43 +1526,53 @@ export default function AppContainer() {
                   {(citizenReportFilter === 'mine' ? myReports : reports).map((report) => {
                     const alreadySupported = report.supportedBy?.includes(user.email.toLowerCase());
                     const isOwnReport = report.citizenEmail?.toLowerCase() === user.email.toLowerCase();
+                    const isDemo = report.isDemo || report.id.startsWith('demo_rep_') || report.description?.startsWith('[DEMO]');
 
                     return (
                       <div key={report.id} className="bg-cardLight/50 border border-white/5 rounded-xl p-5 flex flex-col sm:flex-row gap-5 items-start hover:border-white/10 transition-all">
                         {/* Imagen */}
                         <div className="w-24 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-black/30 border border-white/5 self-center sm:self-start">
-                          <img src={getImageUrl(report.imageUrl)} alt="" className="object-cover w-full h-full" />
+                          <img src={getImageUrl(report.imageUrl)} alt={report.category} className="object-cover w-full h-full" />
                         </div>
 
                         {/* Info */}
                         <div className="flex-1 min-w-0 w-full">
-                          <div className="flex flex-wrap items-center gap-3 mb-1.5">
+                          <div className="flex flex-wrap items-center gap-2 mb-1.5">
                             <span className="text-xs font-bold text-white uppercase">{report.category}</span>
+                            {report.isDraft && (
+                              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                BORRADOR OFFLINE
+                              </span>
+                            )}
+                            {isDemo && (
+                              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                DEMO
+                              </span>
+                            )}
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${statusBadge(report.status)}`}>
                               {report.status.replace('_', ' ')}
                             </span>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
                               report.priority === 'CRITICA' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
                               report.priority === 'ALTA' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
-                              'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                              'bg-gray-500/10 text-gray-300 border-gray-500/20'
                             }`}>
                               {report.priority}
                             </span>
                             
-                            {/* Mostrar upvotes */}
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
                               <Flame className="h-3 w-3 fill-amber-400" />
                               {report.upvotes || 0} apoyos
                             </span>
                           </div>
                           <p className="text-xs text-gray-300 mb-2">{report.description}</p>
-                          <div className="flex items-center gap-4 text-[10px] text-gray-500 font-sans">
+                          <div className="flex items-center gap-4 text-[10px] text-gray-400 font-sans">
                             <span className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3" />
+                              <MapPin className="h-3 w-3 text-primary" />
                               {report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}
                             </span>
                             <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
+                              <Clock className="h-3 w-3 text-gray-400" />
                               {new Date(report.createdAt).toLocaleString()}
                             </span>
                           </div>
@@ -1357,10 +1586,10 @@ export default function AppContainer() {
                               loadData();
                             }}
                             disabled={alreadySupported}
-                            className={`w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border uppercase ${
+                            className={`w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border uppercase focus-visible:ring-2 focus-visible:ring-primary ${
                               alreadySupported 
                                 ? 'bg-green-500/10 text-green-400 border-green-500/20 cursor-default' 
-                                : 'bg-primary hover:bg-primary-dark text-white border-primary/20 shadow-lg shadow-primary/10'
+                                : 'bg-primary hover:bg-primary-dark text-white border-primary/20 shadow-lg shadow-primary/10 cursor-pointer'
                             }`}
                           >
                             <Flame className={`h-4.5 w-4.5 ${alreadySupported ? 'fill-green-400' : ''}`} />
@@ -1371,7 +1600,7 @@ export default function AppContainer() {
                         {isOwnReport && (
                           <button
                             onClick={() => handleDeleteReport(report.id)}
-                            className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-red-500/20 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white uppercase"
+                            className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-red-500/20 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white uppercase cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
                           >
                             <Trash2 className="h-4.5 w-4.5" />
                             <span>Eliminar</span>
@@ -1393,11 +1622,12 @@ export default function AppContainer() {
   // VISTA 3: OPERATOR DASHBOARD (Si es operador municipal)
   return (
     <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans relative overflow-hidden">
-      {/* Luces de fondo animadas premium */}
+      {/* Luces de fondo animadas */}
       <div className="absolute top-[-10%] left-[-10%] w-[550px] h-[550px] bg-primary/4 rounded-full blur-[130px] pointer-events-none animate-float-1"></div>
       <div className="absolute bottom-[10%] right-[-5%] w-[500px] h-[500px] bg-accent-purple/4 rounded-full blur-[110px] pointer-events-none animate-float-2"></div>
+      
       {/* Navbar Superior */}
-      <header className="w-full glass-panel sticky top-0 z-40 border-b border-white/5 py-4 px-6 md:px-12 flex justify-between items-center">
+      <header className="w-full glass-panel sticky top-0 z-40 border-b border-white/5 py-4 px-6 md:px-12 flex flex-wrap justify-between items-center gap-4">
         <div className="flex items-center gap-3">
           <div className="relative w-11 h-11 rounded-xl overflow-hidden border border-white/10 shadow-lg glow-green flex items-center justify-center bg-black/20">
             <img src="/logo.png" alt="EcoTuc Logo" className="object-cover w-full h-full" />
@@ -1409,108 +1639,147 @@ export default function AppContainer() {
                 Municipal v1.0
               </span>
             </h1>
-            <p className="text-xs text-gray-400">Plataforma Inteligente de Gestión Ambiental</p>
+            <p className="text-xs text-gray-300">Plataforma Inteligente de Gestión Ambiental - Tucumán</p>
           </div>
         </div>
 
-        {/* Estado del Servidor Backend */}
-        <div className="flex items-center gap-6">
-          <div className="hidden md:flex items-center gap-2 text-xs">
-            <Database className="h-3.5 w-3.5 text-primary" />
-            <span className="text-gray-400">
-              DB Local: <span className="text-primary font-semibold">{reports.length} reportes</span>
+        {/* Estado del Servidor Backend y Herramientas Demo */}
+        <div className="flex flex-wrap items-center gap-3 md:gap-6">
+          {/* Indicador transparente de Persistencia */}
+          <div className="flex items-center gap-1.5 text-xs bg-cardLight/50 px-3 py-1.5 rounded-full border border-white/5" title={apiOnline ? 'Conectado a PostgreSQL' : 'Persistencia local en este navegador'}>
+            <span className={`h-2 w-2 rounded-full ${apiOnline ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+            <span className="text-gray-300 text-[11px]">
+              {apiOnline ? 'Servidor Central (PostgreSQL)' : 'Modo Local (Navegador)'}
             </span>
           </div>
-          <div className="hidden md:flex flex-col items-end text-xs">
+
+          {/* Menú de Datos de Demostración */}
+          <div className="flex items-center gap-1.5 bg-black/30 p-1 rounded-xl border border-white/5 text-xs">
+            <button
+              onClick={handleLoadDemo}
+              title="Cargar incidencias ficticias en Tucumán para probar el flujo"
+              className="px-2.5 py-1 text-[11px] font-semibold text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary"
+            >
+              + Cargar Demo
+            </button>
+            <button
+              onClick={handleClearDemo}
+              title="Limpiar únicamente las incidencias de prueba"
+              className="px-2.5 py-1 text-[11px] font-semibold text-gray-300 hover:text-white bg-cardLight hover:bg-gray-800 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary"
+            >
+              Limpiar Demo
+            </button>
+            <button
+              onClick={handleResetDB}
+              title="Reiniciar base de datos limpia sin reportes"
+              className="px-2.5 py-1 text-[11px] font-semibold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary"
+            >
+              Reiniciar DB
+            </button>
+          </div>
+
+          <div className="hidden lg:flex flex-col items-end text-xs">
             <span className="text-white font-bold">{user.fullName}</span>
             <span className="text-gray-400">Rol: {user.role}</span>
           </div>
 
           <button 
             onClick={() => setUser(null)}
-            className="text-red-400 hover:text-red-300 flex items-center gap-1 text-xs bg-red-500/10 py-1.5 px-3 rounded-lg border border-red-500/20"
+            className="text-red-400 hover:text-red-300 flex items-center gap-1 text-xs bg-red-500/10 py-1.5 px-3 rounded-lg border border-red-500/20 focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+            aria-label="Cerrar sesión de operador"
           >
             <LogOut className="h-3.5 w-3.5" /> Salir
           </button>
         </div>
       </header>
 
-      {/* Grid de Métricas Principales */}
+      {/* Banner de Feedback Demo */}
+      {demoMessage && (
+        <div className="mx-6 md:mx-12 mt-3 bg-purple-900/60 border border-purple-500/40 p-2.5 px-4 rounded-xl text-xs text-white flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Info className="h-4 w-4 text-purple-300" />
+            <span>{demoMessage}</span>
+          </div>
+          <button onClick={() => setDemoMessage(null)} className="text-purple-300 hover:text-white">✕</button>
+        </div>
+      )}
+
+      {/* Grid de Métricas Principales (Consistentes en toda la aplicación) */}
       <section className="p-6 md:px-12 grid grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
         <button
           onClick={() => {
-            console.log("EcoTuc Log: clicked 'Total de Reportes' card");
             setActiveTab('table');
             setMetricFilter('ALL');
           }}
-          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 ${
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
             metricFilter === 'ALL' && activeTab === 'table'
               ? 'ring-2 ring-primary bg-primary/5 shadow-lg shadow-primary/10 scale-[1.02] border-primary/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
           }`}
+          aria-label="Filtrar por total de reportes"
         >
-          <div className="p-3 rounded-xl bg-gray-500/10 text-gray-400">
+          <div className="p-3 rounded-xl bg-gray-500/10 text-gray-300">
             <ClipboardList className="h-6 w-6" />
           </div>
           <div>
             <div className="text-2xl font-bold text-white">{stats.total}</div>
-            <div className="text-xs text-gray-400">Total de Reportes</div>
+            <div className="text-xs text-gray-300">Total de Reportes</div>
           </div>
         </button>
 
         <button
           onClick={() => {
-            console.log("EcoTuc Log: clicked 'Reportes Abiertos' card");
             setActiveTab('table');
             setMetricFilter('OPEN');
           }}
-          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 ${
-            ['OPEN', 'PENDIENTE', 'ASIGNADO', 'EN_PROCESO'].includes(metricFilter) && activeTab === 'table'
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:outline-none ${
+            metricFilter === 'OPEN' && activeTab === 'table'
               ? 'ring-2 ring-amber-500 bg-amber-500/5 shadow-lg shadow-amber-500/10 scale-[1.02] border-amber-500/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
           }`}
+          aria-label="Filtrar por reportes abiertos"
         >
           <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400">
             <Clock className="h-6 w-6" />
           </div>
           <div>
             <div className="text-2xl font-bold text-white">{stats.open}</div>
-            <div className="text-xs text-gray-400">Reportes Abiertos</div>
+            <div className="text-xs text-gray-300">Reportes Abiertos</div>
           </div>
         </button>
 
         <button
           onClick={() => {
-            console.log("EcoTuc Log: clicked 'Resueltos / Cerrados' card");
             setActiveTab('table');
             setMetricFilter('CLOSED');
           }}
-          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 ${
-            ['CLOSED', 'RESUELTO', 'RECHAZADO'].includes(metricFilter) && activeTab === 'table'
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+            metricFilter === 'CLOSED' && activeTab === 'table'
               ? 'ring-2 ring-green-500 bg-green-500/5 shadow-lg shadow-green-500/10 scale-[1.02] border-green-500/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
           }`}
+          aria-label="Filtrar por reportes resueltos o cerrados"
         >
           <div className="p-3 rounded-xl bg-primary/10 text-primary">
             <CheckCircle className="h-6 w-6" />
           </div>
           <div>
             <div className="text-2xl font-bold text-white">{stats.closed}</div>
-            <div className="text-xs text-gray-400">Resueltos / Cerrados</div>
+            <div className="text-xs text-gray-300">Resueltos / Cerrados</div>
           </div>
         </button>
 
         <button
           onClick={() => {
-            console.log("EcoTuc Log: clicked 'Reportes Urgentes' card");
             setActiveTab('table');
             setMetricFilter('URGENT');
           }}
-          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative overflow-hidden group z-10 ${
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative overflow-hidden group z-10 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none ${
             metricFilter === 'URGENT' && activeTab === 'table'
               ? 'ring-2 ring-red-500 bg-red-500/5 shadow-lg shadow-red-500/10 scale-[1.02] border-red-500/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
           }`}
+          aria-label="Filtrar por reportes urgentes"
         >
           <div className="absolute top-0 right-0 h-full w-1.5 bg-red-500"></div>
           <div className="p-3 rounded-xl bg-red-500/10 text-red-400">
@@ -1521,28 +1790,28 @@ export default function AppContainer() {
               {stats.urgent}
               {stats.urgent > 0 && <span className="flex h-2 w-2 rounded-full bg-red-500 animate-ping"></span>}
             </div>
-            <div className="text-xs text-gray-400">Reportes Urgentes</div>
+            <div className="text-xs text-gray-300">Reportes Urgentes</div>
           </div>
         </button>
 
         <button
           onClick={() => {
-            console.log("EcoTuc Log: clicked 'Cuadrillas Activas' card");
             setActiveTab('crews');
             setMetricFilter('ALL');
           }}
-          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 ${
+          className={`glass-card p-5 rounded-2xl flex items-center gap-4 text-left transition-all relative z-10 focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none ${
             activeTab === 'crews'
               ? 'ring-2 ring-accent-blue bg-accent-blue/5 shadow-lg shadow-accent-blue/10 scale-[1.02] border-accent-blue/30'
               : 'hover:scale-[1.01] hover:border-white/10 cursor-pointer'
           }`}
+          aria-label="Ver gestión de cuadrillas"
         >
           <div className="p-3 rounded-xl bg-accent-blue/10 text-accent-blue">
             <Users className="h-6 w-6" />
           </div>
           <div>
             <div className="text-2xl font-bold text-white">{stats.activeCrews}</div>
-            <div className="text-xs text-gray-400">Cuadrillas Activas</div>
+            <div className="text-xs text-gray-300">Cuadrillas Activas</div>
           </div>
         </button>
       </section>
@@ -1550,11 +1819,11 @@ export default function AppContainer() {
       {/* Tabs y Panel de Control Principal */}
       <main className="flex-1 px-6 md:px-12 pb-12 flex flex-col gap-6">
         {/* Selectores de Pestaña */}
-        <div className="flex bg-card/60 p-1.5 rounded-xl border border-white/5 self-start gap-1">
+        <div className="flex flex-wrap bg-card/60 p-1.5 rounded-xl border border-white/5 self-start gap-1">
           <button 
             onClick={() => setActiveTab('map')}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === 'map' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-400 hover:text-white'
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+              activeTab === 'map' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-300 hover:text-white'
             }`}
           >
             <MapIcon className="h-4.5 w-4.5" />
@@ -1562,8 +1831,8 @@ export default function AppContainer() {
           </button>
           <button 
             onClick={() => setActiveTab('crews')}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === 'crews' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-400 hover:text-white'
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+              activeTab === 'crews' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-300 hover:text-white'
             }`}
           >
             <Users className="h-4.5 w-4.5" />
@@ -1571,8 +1840,8 @@ export default function AppContainer() {
           </button>
           <button 
             onClick={() => setActiveTab('table')}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === 'table' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-400 hover:text-white'
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+              activeTab === 'table' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-300 hover:text-white'
             }`}
           >
             <ClipboardList className="h-4.5 w-4.5" />
@@ -1580,8 +1849,8 @@ export default function AppContainer() {
           </button>
           <button 
             onClick={() => setActiveTab('simulator')}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all border border-transparent ${
-              activeTab === 'simulator' ? 'bg-accent-purple text-white shadow-md shadow-purple/20' : 'text-gray-400 hover:text-white hover:border-purple-500/20'
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all border border-transparent focus-visible:ring-2 focus-visible:ring-accent-purple ${
+              activeTab === 'simulator' ? 'bg-accent-purple text-white shadow-md shadow-purple/20' : 'text-gray-300 hover:text-white hover:border-purple-500/20'
             }`}
           >
             <Smartphone className="h-4.5 w-4.5" />
@@ -1589,8 +1858,8 @@ export default function AppContainer() {
           </button>
           <button 
             onClick={() => setActiveTab('analytics')}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all border border-transparent ${
-              activeTab === 'analytics' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-400 hover:text-white hover:border-primary/20'
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all border border-transparent focus-visible:ring-2 focus-visible:ring-primary ${
+              activeTab === 'analytics' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-300 hover:text-white hover:border-primary/20'
             }`}
           >
             <BarChart3 className="h-4.5 w-4.5" />
@@ -1600,7 +1869,7 @@ export default function AppContainer() {
 
         {/* Banner de Filtro Activo */}
         {activeTab === 'table' && metricFilter !== 'ALL' && (
-          <div className="bg-primary/10 border border-primary/20 p-3 rounded-xl flex items-center justify-between text-xs text-gray-300 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="bg-primary/10 border border-primary/20 p-3 rounded-xl flex items-center justify-between text-xs text-gray-200 animate-in fade-in slide-in-from-top-2 duration-200">
             <div className="flex items-center gap-2">
               <Info className="h-4 w-4 text-primary" />
               <span>
@@ -1618,14 +1887,14 @@ export default function AppContainer() {
             </div>
             <button 
               onClick={() => setMetricFilter('ALL')}
-              className="text-primary font-bold hover:underline bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/20"
+              className="text-primary font-bold hover:underline bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/20 focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
             >
               Mostrar todos
             </button>
           </div>
         )}
 
-        {/* Contenido de la pestaña con transiciones de entrada animadas */}
+        {/* Contenido de la pestaña */}
         <div key={activeTab} className="flex-1 animate-in fade-in-50 slide-in-from-bottom-3 duration-300 ease-out">
           {activeTab === 'map' && (
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -1642,18 +1911,19 @@ export default function AppContainer() {
                   <div className="glass-card p-6 rounded-2xl flex flex-col gap-5 border border-white/10 sticky top-24">
                     <div className="flex justify-between items-start">
                       <span className={`text-xs font-bold px-2.5 py-1 rounded-full uppercase ${
-                        selectedReport.priority === 'CRITICA' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
-                        selectedReport.priority === 'ALTA' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' :
-                        selectedReport.priority === 'MEDIA' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                        selectedReport.priority === 'CRITICA' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                        selectedReport.priority === 'ALTA' ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20' :
+                        selectedReport.priority === 'MEDIA' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
                         'bg-primary/10 text-primary border border-primary/20'
                       }`}>
                         Prioridad {selectedReport.priority}
                       </span>
                       <button 
                         onClick={() => setSelectedReport(null)}
-                        className="text-gray-400 hover:text-white text-xs"
+                        className="text-gray-400 hover:text-white text-xs p-1"
+                        aria-label="Cerrar detalle"
                       >
-                        Cerrar
+                        ✕
                       </button>
                     </div>
 
@@ -1669,7 +1939,14 @@ export default function AppContainer() {
                     </div>
 
                     <div>
-                      <h3 className="text-lg font-bold text-white">{selectedReport.category}</h3>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="text-lg font-bold text-white">{selectedReport.category}</h3>
+                        {(selectedReport.isDemo || selectedReport.id.startsWith('demo_rep_') || selectedReport.description?.startsWith('[DEMO]')) && (
+                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                            DEMO
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-400 mt-1">Reportado el: {new Date(selectedReport.createdAt).toLocaleString()}</p>
                       {selectedReport.citizenName && (
                         <p className="text-xs text-gray-400 mt-0.5">Por: <span className="text-white font-semibold">{selectedReport.citizenName}</span></p>
@@ -1699,8 +1976,8 @@ export default function AppContainer() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 text-xs text-gray-400">
-                        <MapPin className="h-3.5 w-3.5" />
-                        <span>{selectedReport.latitude.toFixed(6)}, {selectedReport.longitude.toFixed(6)}</span>
+                        <MapPin className="h-3.5 w-3.5 text-primary" />
+                        <span className="font-mono">{selectedReport.latitude.toFixed(6)}, {selectedReport.longitude.toFixed(6)}</span>
                       </div>
                     </div>
 
@@ -1709,7 +1986,7 @@ export default function AppContainer() {
                         onClick={() => {
                           setActiveTab('crews');
                         }}
-                        className="w-full bg-primary hover:bg-primary-dark text-white font-semibold py-2.5 rounded-xl transition-all shadow-md shadow-primary/20 mt-2"
+                        className="w-full bg-primary hover:bg-primary-dark text-white font-semibold py-2.5 rounded-xl transition-all shadow-md shadow-primary/20 mt-2 focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
                       >
                         Asignar Cuadrilla
                       </button>
@@ -1722,7 +1999,7 @@ export default function AppContainer() {
                         <ClipboardList className="h-4.5 w-4.5 text-primary" />
                         Distribución de Incidencias
                       </h4>
-                      <p className="text-[10px] text-gray-400 mt-1">Desglose de focos de basura por tipo.</p>
+                      <p className="text-[10px] text-gray-400 mt-1">Desglose de focos de basura por tipo en Tucumán.</p>
                     </div>
 
                     <div className="flex flex-col gap-3.5">
@@ -1755,7 +2032,7 @@ export default function AppContainer() {
                     </div>
 
                     <div className="border-t border-white/5 pt-4 text-center">
-                      <p className="text-[10px] text-gray-500">Haz clic en un marcador del mapa para ver sus detalles específicos.</p>
+                      <p className="text-[10px] text-gray-400">Haz clic en un marcador del mapa para ver sus detalles específicos.</p>
                     </div>
                   </div>
                 )}
@@ -1773,7 +2050,6 @@ export default function AppContainer() {
               onLocalUpdate={(updatedCrews, updatedReports) => {
                 setCrews(updatedCrews);
                 setReports(updatedReports);
-                // Persistir en DB local
                 saveAllCrews(updatedCrews);
                 saveAllReports(updatedReports);
                 setStats(getReportStats());
@@ -1784,7 +2060,7 @@ export default function AppContainer() {
           {activeTab === 'table' && (
             <ReportsTable 
               reports={reports} 
-              crews={crews}
+              crews={crews} 
               backendUrl={backendUrl}
               onReportUpdated={loadData}
               apiOnline={apiOnline}
@@ -1792,7 +2068,6 @@ export default function AppContainer() {
               setStatusFilter={setMetricFilter}
               onLocalUpdate={(updatedReports) => {
                 setReports(updatedReports);
-                // Persistir en DB local
                 saveAllReports(updatedReports);
                 setStats(getReportStats());
               }}
@@ -1805,11 +2080,11 @@ export default function AppContainer() {
               onNewReport={loadData}
               apiOnline={apiOnline}
               onLocalReportAdd={(newReport) => {
-                // Guardar en la DB local también desde el simulador
                 const reportToSave = addReport({
                   ...newReport,
-                  citizenEmail: 'simulador@ecotuc.com',
-                  citizenName: 'Ciudadano (Simulador)',
+                  citizenEmail: 'ciudadano.demo@ecotuc.local',
+                  citizenName: 'Ciudadano Demo Tucumán',
+                  isDemo: true,
                 });
 
                 const updatedReports = getAllReports();
@@ -1827,12 +2102,13 @@ export default function AppContainer() {
             <AnalyticsDashboard 
               reports={reports} 
               crews={crews} 
+              onLoadDemo={handleLoadDemo}
             />
           )}
         </div>
       </main>
 
-      {/* Panel de Toasts Notificadores Flotantes Premium */}
+      {/* Panel de Toasts Notificadores Flotantes */}
       <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-3.5 max-w-sm w-full pointer-events-none">
         {toasts.map((t) => {
           const priorityColors: Record<string, string> = {
@@ -1851,7 +2127,7 @@ export default function AppContainer() {
               <div className="h-12 w-12 rounded-xl overflow-hidden bg-black/40 border border-white/5 flex-shrink-0 relative">
                 <img 
                   src={getImageUrl(t.report.imageUrl)} 
-                  alt="" 
+                  alt={t.report.category} 
                   className="object-cover w-full h-full"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=600&auto=format&fit=crop';
@@ -1870,16 +2146,15 @@ export default function AppContainer() {
                 <div className="flex items-center justify-between mt-2.5 pt-1.5 border-t border-white/5">
                   <span className="text-[8px] text-gray-400 flex items-center gap-1 font-sans">
                     <MapPin className="h-3 w-3 text-primary" /> 
-                    {t.report.latitude.toFixed(5)}, {t.report.longitude.toFixed(5)}
+                    {t.report.latitude?.toFixed(5)}, {t.report.longitude?.toFixed(5)}
                   </span>
                   <button 
                     onClick={() => {
                       setSelectedReport(t.report);
                       setActiveTab('map');
-                      // Remueve este toast inmediatamente
                       setToasts(prev => prev.filter(item => item.id !== t.id));
                     }}
-                    className="text-[9px] font-bold text-white bg-primary/20 hover:bg-primary py-1 px-2.5 rounded-lg border border-primary/20 transition-all font-sans cursor-pointer animate-pulse"
+                    className="text-[9px] font-bold text-white bg-primary/20 hover:bg-primary py-1 px-2.5 rounded-lg border border-primary/20 transition-all font-sans cursor-pointer"
                   >
                     Ver en Mapa
                   </button>

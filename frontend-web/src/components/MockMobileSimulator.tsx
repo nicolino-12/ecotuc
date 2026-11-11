@@ -21,7 +21,7 @@ export default function MockMobileSimulator({
   // Estados del dispositivo simulado
   const [isLoggedIn, setIsLoggedIn] = useState(true); // Saltamos por defecto al menu
   const [currentScreen, setCurrentScreen] = useState<'home' | 'report' | 'history' | 'notifications'>('home');
-  const [citizenEmail, setCitizenEmail] = useState('vecinotuc@gmail.com');
+  const [citizenEmail, setCitizenEmail] = useState('ciudadano.demo@ecotuc.local');
   const [citizenName, setCitizenName] = useState('Vecino EcoTuc');
   
   // Estados del formulario de Reporte
@@ -426,7 +426,7 @@ export default function MockMobileSimulator({
                     </div>
 
                     <button 
-                      disabled={!customPhotoUrl || isSubmitting}
+                      disabled={!customPhotoUrl || description.trim().length < 5 || isSubmitting}
                       onClick={handleSubmitReport}
                       className={`w-full py-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg mt-2 ${
                         !customPhotoUrl

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { ListFilter, MapPin, Eye } from 'lucide-react';
+import { ListFilter, MapPin, Eye, AlertTriangle, Layers, Info } from 'lucide-react';
 
 interface MapDashboardProps {
   reports: any[];
@@ -19,7 +19,7 @@ function ChangeView({ center }: { center: [number, number] }) {
     if (center) {
       map.setView(center, 14, { animate: true });
     }
-  }, [center]);
+  }, [center, map]);
   return null;
 }
 
@@ -28,9 +28,14 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterPriority, setFilterPriority] = useState<string>('ALL');
   const [mapCenter, setMapCenter] = useState<[number, number]>([-26.828372, -65.222312]);
+  const [tileError, setTileError] = useState(false);
   
   // Posiciones simuladas de los camiones
   const [simulatedPositions, setSimulatedPositions] = useState<Record<string, { lat: number; lng: number; targetIdx: number; progress: number }>>({});
+
+  // Proveedor de mapa leído de variables de entorno públicas con fallback seguro a OpenStreetMap
+  const tileUrl = process.env.NEXT_PUBLIC_MAP_TILE_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const attribution = process.env.NEXT_PUBLIC_MAP_ATTRIBUTION || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
   // 1. Simulación de movimiento del camión de basura
   useEffect(() => {
@@ -47,7 +52,12 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
         activeCrewsEnRuta.forEach(crew => {
           const routeStr = localStorage.getItem(`route_${crew.id}`);
           if (!routeStr) return;
-          const route = JSON.parse(routeStr);
+          let route: any = null;
+          try {
+            route = JSON.parse(routeStr);
+          } catch {
+            return;
+          }
           if (!route || !route.optimizedSequence || route.optimizedSequence.length === 0) return;
 
           const startCoords: [number, number] = [-26.828372, -65.222312]; // Plaza Independencia (Base)
@@ -73,7 +83,7 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
           const fromPoint = stops[targetIdx - 1];
           const toPoint = stops[targetIdx];
 
-          // 5% de avance por tick de intervalo (aprox 20 ticks por tramo)
+          // 5% de avance por tick de intervalo
           progress += 0.05; 
 
           if (progress >= 1) {
@@ -116,22 +126,26 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
       if (crew.status === 'EN_RUTA') {
         const routeStr = localStorage.getItem(`route_${crew.id}`);
         if (routeStr) {
-          const route = JSON.parse(routeStr);
-          if (route && route.optimizedSequence && route.optimizedSequence.length > 0) {
-            const startCoords: [number, number] = [-26.828372, -65.222312];
-            const coords: [number, number][] = [startCoords];
-            route.optimizedSequence.forEach((repId: string) => {
-              const rep = reports.find(r => r.id === repId || String(r.id) === String(repId));
-              if (rep) {
-                coords.push([rep.latitude, rep.longitude]);
-              }
-            });
-            coords.push(startCoords);
-            paths.push({
-              crewId: crew.id,
-              crewName: crew.name,
-              coords
-            });
+          try {
+            const route = JSON.parse(routeStr);
+            if (route && route.optimizedSequence && route.optimizedSequence.length > 0) {
+              const startCoords: [number, number] = [-26.828372, -65.222312];
+              const coords: [number, number][] = [startCoords];
+              route.optimizedSequence.forEach((repId: string) => {
+                const rep = reports.find(r => r.id === repId || String(r.id) === String(repId));
+                if (rep) {
+                  coords.push([rep.latitude, rep.longitude]);
+                }
+              });
+              coords.push(startCoords);
+              paths.push({
+                crewId: crew.id,
+                crewName: crew.name,
+                coords
+              });
+            }
+          } catch {
+            // Ignorar errores de parseo
           }
         }
       }
@@ -146,7 +160,7 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
     if (isResolved) {
       return L.divIcon({
         html: `
-          <div class="w-8 h-8 rounded-full bg-gray-600/90 border-2 border-gray-400 flex items-center justify-center shadow-lg text-white">
+          <div class="w-8 h-8 rounded-full bg-emerald-700/90 border-2 border-emerald-400 flex items-center justify-center shadow-lg text-white">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
               <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
             </svg>
@@ -212,7 +226,7 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
     return L.divIcon({
       html: `
         <div class="relative flex items-center justify-center">
-          ${showPulse ? `<span class="absolute inline-flex h-8 w-8 rounded-full ${c.bg} opacity-20 animate-ping"></span>` : ''}
+          ${showPulse ? `<span class="absolute inline-flex h-8 w-8 rounded-full ${c.bg} opacity-25 animate-ping"></span>` : ''}
           <div class="w-8 h-8 rounded-full ${c.bg} ${c.text} border-2 ${c.border} flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.4)] transition-all duration-300 hover:scale-110">
             ${iconSvg}
           </div>
@@ -245,17 +259,28 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
     });
   };
 
-  // Filtrado de reportes en base a selecciones de control
+  // Filtrado coherente de reportes con la misma lógica del resto de vistas
   const filteredReports = reports.filter((rep) => {
     const matchCat = filterCategory === 'ALL' || rep.category === filterCategory;
-    const matchStatus = filterStatus === 'ALL' || rep.status === filterStatus;
+    
+    let matchStatus = true;
+    if (filterStatus === 'ALL') {
+      matchStatus = true;
+    } else if (filterStatus === 'OPEN') {
+      matchStatus = ['PENDIENTE', 'EN_REVISION', 'ASIGNADO', 'EN_PROCESO'].includes(rep.status);
+    } else if (filterStatus === 'CLOSED') {
+      matchStatus = ['RESUELTO', 'RECHAZADO', 'CERRADO'].includes(rep.status);
+    } else {
+      matchStatus = rep.status === filterStatus;
+    }
+
     const matchPrior = filterPriority === 'ALL' || rep.priority === filterPriority;
     return matchCat && matchStatus && matchPrior;
   });
 
   // Centrar en un reporte si se selecciona en la barra lateral
   useEffect(() => {
-    if (selectedReport) {
+    if (selectedReport && selectedReport.latitude && selectedReport.longitude) {
       setMapCenter([selectedReport.latitude, selectedReport.longitude]);
     }
   }, [selectedReport]);
@@ -270,36 +295,44 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
         </div>
 
         <div className="flex flex-wrap gap-3 flex-1 lg:flex-none">
+          <label className="sr-only" htmlFor="map-filter-category">Filtrar por categoría</label>
           <select 
+            id="map-filter-category"
             value={filterCategory} 
             onChange={(e) => setFilterCategory(e.target.value)}
-            className="bg-cardLight text-xs text-gray-200 py-2 px-3 rounded-lg border border-white/5 focus:outline-none focus:border-primary"
+            className="bg-cardLight text-xs text-gray-200 py-2 px-3 rounded-lg border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
           >
             <option value="ALL">Todas las Categorías</option>
-            <option value="BASURAL">Basural</option>
+            <option value="BASURAL">Basural Masivo</option>
             <option value="ALCANTARILLA">Alcantarilla Tapada</option>
             <option value="ESCOMBROS">Escombros</option>
             <option value="PELIGROSO">Residuos Peligrosos</option>
             <option value="OTROS">Otros</option>
           </select>
 
+          <label className="sr-only" htmlFor="map-filter-status">Filtrar por estado</label>
           <select 
+            id="map-filter-status"
             value={filterStatus} 
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="bg-cardLight text-xs text-gray-200 py-2 px-3 rounded-lg border border-white/5 focus:outline-none focus:border-primary"
+            className="bg-cardLight text-xs text-gray-200 py-2 px-3 rounded-lg border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
           >
             <option value="ALL">Todos los Estados</option>
+            <option value="OPEN">Abiertos (Pendientes / Asignados / Proceso)</option>
             <option value="PENDIENTE">Pendiente</option>
             <option value="ASIGNADO">Asignado</option>
             <option value="EN_PROCESO">En Proceso</option>
+            <option value="CLOSED">Cerrados (Resueltos / Rechazados)</option>
             <option value="RESUELTO">Resuelto</option>
             <option value="RECHAZADO">Rechazado</option>
           </select>
 
+          <label className="sr-only" htmlFor="map-filter-priority">Filtrar por prioridad</label>
           <select 
+            id="map-filter-priority"
             value={filterPriority} 
             onChange={(e) => setFilterPriority(e.target.value)}
-            className="bg-cardLight text-xs text-gray-200 py-2 px-3 rounded-lg border border-white/5 focus:outline-none focus:border-primary"
+            className="bg-cardLight text-xs text-gray-200 py-2 px-3 rounded-lg border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
           >
             <option value="ALL">Todas las Prioridades</option>
             <option value="CRITICA">Crítica</option>
@@ -309,8 +342,8 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
           </select>
         </div>
         
-        <span className="text-xs text-gray-400 font-semibold">
-          {filteredReports.length} reportes filtrados
+        <span className="text-xs text-gray-300 font-semibold">
+          {filteredReports.length} {filteredReports.length === 1 ? 'reporte visible' : 'reportes visibles'}
         </span>
       </div>
 
@@ -320,49 +353,68 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
           center={mapCenter} 
           zoom={13} 
           scrollWheelZoom={true} 
-          className="h-full w-full"
+          className="h-full w-full dark-map-tiles"
         >
           <ChangeView center={mapCenter} />
           
-          {/* Estilo oscuro del mapa usando un tile público filtrado o CartoDB Dark Matter */}
+          {/* Teselas públicas de OpenStreetMap con fallback accesible */}
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            attribution={attribution}
+            url={tileUrl}
+            eventHandlers={{
+              tileerror: () => setTileError(true),
+              tileload: () => setTileError(false),
+            }}
           />
 
           {/* Marcadores de Reportes de Basura */}
-          {filteredReports.map((rep) => (
-            <Marker 
-              key={rep.id} 
-              position={[rep.latitude, rep.longitude]}
-              icon={getReportIcon(rep.priority, rep.status, rep.category)}
-              eventHandlers={{
-                click: () => onSelectReport(rep)
-              }}
-            >
-              <Popup>
-                <div className="p-1 max-w-[200px] flex flex-col gap-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-xs uppercase text-primary">{rep.category}</span>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                      rep.priority === 'CRITICA' ? 'bg-red-500/20 text-red-400' :
-                      rep.priority === 'ALTA' ? 'bg-orange-500/20 text-orange-400' :
-                      'bg-amber-500/20 text-amber-400'
-                    }`}>
-                      {rep.priority}
-                    </span>
+          {filteredReports.map((rep) => {
+            const isDemo = rep.isDemo || rep.id.startsWith('demo_rep_') || rep.description?.startsWith('[DEMO]');
+            return (
+              <Marker 
+                key={rep.id} 
+                position={[rep.latitude, rep.longitude]}
+                icon={getReportIcon(rep.priority, rep.status, rep.category)}
+                eventHandlers={{
+                  click: () => onSelectReport(rep)
+                }}
+              >
+                <Popup>
+                  <div className="p-1 max-w-[220px] flex flex-col gap-2">
+                    <div className="flex justify-between items-center gap-1">
+                      <span className="font-bold text-xs uppercase text-primary">{rep.category}</span>
+                      <div className="flex items-center gap-1">
+                        {isDemo && (
+                          <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                            DEMO
+                          </span>
+                        )}
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          rep.priority === 'CRITICA' ? 'bg-red-500/20 text-red-400' :
+                          rep.priority === 'ALTA' ? 'bg-orange-500/20 text-orange-400' :
+                          'bg-amber-500/20 text-amber-400'
+                        }`}>
+                          {rep.priority}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-300 line-clamp-2">{rep.description || 'Sin descripción.'}</p>
+                    <div className="text-[10px] text-gray-400 flex justify-between">
+                      <span>Estado: <strong className="text-white">{rep.status}</strong></span>
+                      {rep.upvotes ? <span>🔥 {rep.upvotes}</span> : null}
+                    </div>
+                    <button 
+                      onClick={() => onSelectReport(rep)}
+                      className="w-full bg-cardLight hover:bg-gray-800 text-[10px] text-white font-semibold py-1.5 rounded flex items-center justify-center gap-1 border border-white/5 transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer"
+                      aria-label={`Ver detalle del reporte de ${rep.category}`}
+                    >
+                      <Eye className="h-3 w-3 text-primary" /> Ver Detalle
+                    </button>
                   </div>
-                  <p className="text-xs text-gray-300 line-clamp-2">{rep.description || 'Sin descripción.'}</p>
-                  <button 
-                    onClick={() => onSelectReport(rep)}
-                    className="w-full bg-cardLight hover:bg-gray-800 text-[10px] text-white font-semibold py-1.5 rounded flex items-center justify-center gap-1 border border-white/5"
-                  >
-                    <Eye className="h-3 w-3 text-primary" /> Ver Detalle
-                  </button>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+                </Popup>
+              </Marker>
+            );
+          })}
 
           {/* Trazado de Rutas Activas */}
           {activeRoutesPaths.map((p) => (
@@ -386,25 +438,48 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
                 position={[crewLat || -26.828372, crewLng || -65.222312]}
                 icon={getCrewIcon(crew.status)}
               >
-              <Popup>
-                <div className="p-1">
-                  <h4 className="font-bold text-sm text-white">{crew.name}</h4>
-                  <p className="text-xs text-gray-400">Patente: {crew.vehiclePlate}</p>
-                  <p className="text-xs text-gray-400">Estado: <span className="text-primary font-semibold">{crew.status}</span></p>
-                  <div className="mt-2 pt-1.5 border-t border-white/5">
-                    <p className="text-[10px] font-bold text-gray-300">Integrantes:</p>
-                    <ul className="list-disc pl-3 text-[10px] text-gray-400 mt-1">
-                      {crew.members.map((m: any, i: number) => (
-                        <li key={i}>{m.fullName} ({m.role})</li>
-                      ))}
-                    </ul>
+                <Popup>
+                  <div className="p-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="font-bold text-sm text-white">{crew.name}</h4>
+                      <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                        CUADRILLA
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Patente de prueba: <strong className="text-white">{crew.vehiclePlate}</strong></p>
+                    <p className="text-xs text-gray-400">Estado: <span className="text-primary font-semibold">{crew.status}</span></p>
+                    <div className="mt-2 pt-1.5 border-t border-white/5">
+                      <p className="text-[10px] font-bold text-gray-300">Integrantes:</p>
+                      <ul className="list-disc pl-3 text-[10px] text-gray-400 mt-1">
+                        {crew.members.map((m: any, i: number) => (
+                          <li key={i}>{m.fullName} ({m.role})</li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
-                </div>
-              </Popup>
-            </Marker>
-          );
-        })}
+                </Popup>
+              </Marker>
+            );
+          })}
         </MapContainer>
+
+        {/* Mensaje de error si falla la carga de teselas */}
+        {tileError && (
+          <div className="absolute top-3 left-3 right-3 bg-red-900/90 text-white text-xs p-3 rounded-xl border border-red-500/40 shadow-xl backdrop-blur-md z-[1000] flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-300 flex-shrink-0" />
+            <span>
+              No se pudieron cargar algunas teselas del mapa base. Verifica la conexión a internet o el proveedor configurado en <code className="bg-black/30 px-1 py-0.5 rounded">NEXT_PUBLIC_MAP_TILE_URL</code>.
+            </span>
+          </div>
+        )}
+
+        {/* Estado vacío cuando no hay reportes que coincidan con los filtros */}
+        {filteredReports.length === 0 && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-card/95 border border-white/10 p-3 px-5 rounded-xl shadow-2xl backdrop-blur-md z-[1000] flex items-center gap-2 text-xs text-gray-300">
+            <Info className="h-4 w-4 text-primary" />
+            <span>No hay focos que coincidan con los filtros seleccionados.</span>
+          </div>
+        )}
       </div>
     </div>
   );

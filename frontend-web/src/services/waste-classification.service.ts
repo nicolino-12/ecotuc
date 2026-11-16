@@ -93,40 +93,6 @@ export class WasteClassificationService {
       explanation: `Se detectó patrón que coincide con la categoría "${category}". Revisar la foto para confirmar la clasificación.`,
     };
   }
-    // Simulación de latencia de inferencia de visión artificial
-    await new Promise((resolve) => setTimeout(resolve, 950));
-
-    // Verificación de integridad básica de la imagen
-    if (!photoUrl || (photoUrl.length < 500 && !photoUrl.startsWith('data:image'))) {
-      return {
-        status: 'LOW_QUALITY',
-        suggestedCategory: null,
-        confidenceScore: 0.25,
-        confidenceLevel: 'BAJA',
-        isHazardousSuspect: false,
-        requiresHumanReview: true,
-        qualityIssue: 'BLURRY',
-        qualityDescription: 'La resolución de la captura es insuficiente o está fuera de foco para un diagnóstico automatizado.',
-        suggestedDescription: '',
-        detectedElements: ['Baja nitidez', 'Patrón difuso'],
-        explanation: 'La IA no puede asegurar el tipo de residuo con la precisión requerida. Puedes seleccionar la categoría manualmente o tomar una fotografía más nítida.',
-      };
-    }
-
-    // Inferencia contextual representativa de microbasurales en Tucumán
-    return {
-      status: 'SUCCESS',
-      suggestedCategory: 'BASURAL',
-      confidenceScore: 0.86,
-      confidenceLevel: 'ALTA',
-      isHazardousSuspect: false,
-      requiresHumanReview: false,
-      qualityIssue: null,
-      suggestedDescription: 'Acumulación de residuos sólidos mixtos domiciliarios en vereda pública con bolsas y restos orgánicos.',
-      detectedElements: ['Bolsas plásticas', 'Residuos mixtos', 'Restos vegetales ligeros'],
-      explanation: 'Se detecta patrón característico de microbasural mixto. Se sugiere categoría "Basural Masivo", sujeta a tu confirmación manual.',
-    };
-  }
 
   /**
    * Registra discrepancias métricas de forma estrictamente anónima (sin fotos)

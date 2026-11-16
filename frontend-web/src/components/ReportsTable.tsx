@@ -3,8 +3,9 @@
 import React, { useState } from 'react';
 import { 
   Eye, Check, X, AlertCircle, Edit, Trash, FileText, 
-  MapPin, CheckCircle, HelpCircle, ListFilter 
+  MapPin, CheckCircle, HelpCircle, ListFilter, ArrowLeftRight 
 } from 'lucide-react';
+import BeforeAfterModal from './BeforeAfterModal';
 
 interface ReportsTableProps {
   reports: any[];
@@ -24,6 +25,7 @@ export default function ReportsTable({
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [localFilterStatus, setLocalFilterStatus] = useState<string>('ALL');
   const [activeReport, setActiveReport] = useState<any>(null);
+  const [beforeAfterReport, setBeforeAfterReport] = useState<any>(null);
   const [obsText, setObsText] = useState<string>('');
   const [selectedCrew, setSelectedCrew] = useState<string>('');
 
@@ -298,6 +300,16 @@ export default function ReportsTable({
                   </td>
                   <td className="py-3 px-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
+                      {report.status === 'RESUELTO' && (
+                        <button 
+                          onClick={() => setBeforeAfterReport(report)}
+                          title="Auditoría Antes y Después"
+                          aria-label="Ver comparativa de saneamiento"
+                          className="p-1.5 bg-emerald-500/10 hover:bg-emerald-600 text-emerald-600 dark:text-emerald-400 hover:text-white rounded-lg transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                        >
+                          <ArrowLeftRight className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                       {report.status === 'PENDIENTE' && (
                         <>
                           <button 
@@ -436,6 +448,13 @@ export default function ReportsTable({
             </div>
           </div>
         </div>
+      )}
+      {/* Modal Antes y Después */}
+      {beforeAfterReport && (
+        <BeforeAfterModal
+          report={beforeAfterReport}
+          onClose={() => setBeforeAfterReport(null)}
+        />
       )}
     </div>
   );

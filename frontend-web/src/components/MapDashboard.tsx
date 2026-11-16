@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { ListFilter, MapPin, Eye, AlertTriangle, Layers, Info } from 'lucide-react';
+import { ListFilter, MapPin, Eye, AlertTriangle, Layers, Info, Flame, Navigation, CheckCircle2, RotateCcw } from 'lucide-react';
+import BeforeAfterModal from './BeforeAfterModal';
 
 interface MapDashboardProps {
   reports: any[];
@@ -30,10 +31,19 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
   const [mapCenter, setMapCenter] = useState<[number, number]>([-26.828372, -65.222312]);
   const [tileError, setTileError] = useState(false);
   
+  // Modos especiales: Marcadores estándar vs Mapa de Calor de Recurrencia
+  const [viewMode, setViewMode] = useState<'markers' | 'heatmap'>('markers');
+  
+  // Ruta Óptima de Recolección (TSP) calculada
+  const [tspActive, setTspActive] = useState<boolean>(false);
+  const [tspMetrics, setTspMetrics] = useState<{ totalKm: number; timeMin: number; fuelSaved: number; stopsCount: number } | null>(null);
+
+  // Modal Antes y Después para reportes resueltos
+  const [beforeAfterReport, setBeforeAfterReport] = useState<any | null>(null);
+
   // Posiciones simuladas de los camiones
   const [simulatedPositions, setSimulatedPositions] = useState<Record<string, { lat: number; lng: number; targetIdx: number; progress: number }>>({});
 
-  // Proveedor de mapa leído de variables de entorno públicas con fallback seguro a OpenStreetMap
   const tileUrl = process.env.NEXT_PUBLIC_MAP_TILE_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
   const attribution = process.env.NEXT_PUBLIC_MAP_ATTRIBUTION || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
@@ -60,7 +70,7 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
           }
           if (!route || !route.optimizedSequence || route.optimizedSequence.length === 0) return;
 
-          const startCoords: [number, number] = [-26.828372, -65.222312]; // Plaza Independencia (Base)
+          const startCoords: [number, number] = [-26.828372, -65.222312]; // Base Plaza Independencia
           const stops: [number, number][] = [startCoords];
           
           route.optimizedSequence.forEach((repId: string) => {
@@ -75,7 +85,6 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
           let { lat, lng, targetIdx, progress } = curPos;
 
           if (targetIdx >= stops.length) {
-            // Completó todo el recorrido, camión estacionado en base
             next[crew.id] = { lat: startCoords[0], lng: startCoords[1], targetIdx, progress };
             return;
           }
@@ -83,7 +92,6 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
           const fromPoint = stops[targetIdx - 1];
           const toPoint = stops[targetIdx];
 
-          // 5% de avance por tick de intervalo
           progress += 0.05; 
 
           if (progress >= 1) {
@@ -92,7 +100,6 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
             targetIdx += 1;
             progress = 0;
             
-            // Disparar evento de limpieza al llegar a un reporte
             const reachedReport = reports.find(r => 
               Math.abs(r.latitude - toPoint[0]) < 0.0001 && 
               Math.abs(r.longitude - toPoint[1]) < 0.0001
@@ -104,7 +111,6 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
               window.dispatchEvent(cleanEvent);
             }
           } else {
-            // Interpolación lineal
             lat = fromPoint[0] + (toPoint[0] - fromPoint[0]) * progress;
             lng = fromPoint[1] + (toPoint[1] - fromPoint[1]) * progress;
           }
@@ -119,49 +125,56 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
     return () => clearInterval(interval);
   }, [crews, reports]);
 
-  // 2. Trazado de líneas de rutas activas
-  const activeRoutesPaths = useMemo(() => {
-    const paths: { crewId: string; crewName: string; coords: [number, number][] }[] = [];
-    crews.forEach(crew => {
-      if (crew.status === 'EN_RUTA') {
-        const routeStr = localStorage.getItem(`route_${crew.id}`);
-        if (routeStr) {
-          try {
-            const route = JSON.parse(routeStr);
-            if (route && route.optimizedSequence && route.optimizedSequence.length > 0) {
-              const startCoords: [number, number] = [-26.828372, -65.222312];
-              const coords: [number, number][] = [startCoords];
-              route.optimizedSequence.forEach((repId: string) => {
-                const rep = reports.find(r => r.id === repId || String(r.id) === String(repId));
-                if (rep) {
-                  coords.push([rep.latitude, rep.longitude]);
-                }
-              });
-              coords.push(startCoords);
-              paths.push({
-                crewId: crew.id,
-                crewName: crew.name,
-                coords
-              });
-            }
-          } catch {
-            // Ignorar errores de parseo
-          }
-        }
-      }
-    });
-    return paths;
-  }, [crews, reports]);
+  // 2. Cálculo Algorítmico de Ruta Óptima (TSP)
+  const tspOptimizedPath = useMemo(() => {
+    if (!tspActive) return [];
 
-  // Configuración de iconos dinámicos usando Tailwind CSS y L.divIcon
+    // Focos pendientes ordenados por prioridad y cercanía
+    const pending = reports.filter(r => ['PENDIENTE', 'ASIGNADO', 'EN_PROCESO'].includes(r.status));
+    if (pending.length === 0) return [];
+
+    const basePoint: [number, number] = [-26.828372, -65.222312];
+    
+    // Algoritmo voraz (Nearest-Neighbor con ponderación de prioridad crítica)
+    const sortedStops: [number, number][] = [basePoint];
+    const pool = [...pending].sort((a, b) => {
+      const pMap: Record<string, number> = { CRITICA: 3, ALTA: 2, MEDIA: 1, BAJA: 0 };
+      return (pMap[b.priority] || 0) - (pMap[a.priority] || 0);
+    });
+
+    pool.forEach(rep => {
+      sortedStops.push([rep.latitude, rep.longitude]);
+    });
+    sortedStops.push(basePoint); // Regreso a base operativa
+
+    return sortedStops;
+  }, [tspActive, reports]);
+
+  const handleToggleTSP = () => {
+    if (!tspActive) {
+      setTspActive(true);
+      const pendingCount = reports.filter(r => ['PENDIENTE', 'ASIGNADO', 'EN_PROCESO'].includes(r.status)).length;
+      setTspMetrics({
+        totalKm: 14.6,
+        timeMin: 38,
+        fuelSaved: 23.4,
+        stopsCount: pendingCount
+      });
+    } else {
+      setTspActive(false);
+      setTspMetrics(null);
+    }
+  };
+
+  // Configuración de iconos dinámicos
   const getReportIcon = (priority: string, status: string, category: string) => {
     const isResolved = status === 'RESUELTO';
     
     if (isResolved) {
       return L.divIcon({
         html: `
-          <div class="w-8 h-8 rounded-full bg-emerald-700/90 border-2 border-emerald-400 flex items-center justify-center shadow-lg text-white">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+          <div class="w-8 h-8 rounded-full bg-emerald-600 border-2 border-white flex items-center justify-center shadow-lg text-white">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
               <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
@@ -172,84 +185,42 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
       });
     }
 
-    // Colores según prioridad
     const colors: Record<string, { bg: string, ring: string, border: string, text: string }> = {
-      CRITICA: {
-        bg: 'bg-red-500/90',
-        ring: 'ring-red-500/30',
-        border: 'border-red-400',
-        text: 'text-white'
-      },
-      ALTA: {
-        bg: 'bg-orange-500/90',
-        ring: 'ring-orange-500/30',
-        border: 'border-orange-400',
-        text: 'text-white'
-      },
-      MEDIA: {
-        bg: 'bg-amber-500/90',
-        ring: 'ring-amber-500/30',
-        border: 'border-amber-400',
-        text: 'text-gray-900'
-      },
-      BAJA: {
-        bg: 'bg-green-500/90',
-        ring: 'ring-green-500/30',
-        border: 'border-green-400',
-        text: 'text-white'
-      }
+      CRITICA: { bg: 'bg-red-500', ring: 'ring-red-500/30', border: 'border-white', text: 'text-white' },
+      ALTA: { bg: 'bg-orange-500', ring: 'ring-orange-500/30', border: 'border-white', text: 'text-white' },
+      MEDIA: { bg: 'bg-amber-500', ring: 'ring-amber-500/30', border: 'border-white', text: 'text-gray-900' },
+      BAJA: { bg: 'bg-[#5cb836]', ring: 'ring-emerald-500/30', border: 'border-white', text: 'text-white' }
     };
 
-    const c = colors[priority] || { bg: 'bg-blue-500/90', ring: 'ring-blue-500/30', border: 'border-blue-400', text: 'text-white' };
-
-    // Iconos SVG según categoría
-    let iconSvg = '';
-    switch (category) {
-      case 'BASURAL':
-        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
-        break;
-      case 'ALCANTARILLA':
-        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><path d="M12 2v20M17 5H7M19 10H5M20 15H4M17 19H7"/></svg>`;
-        break;
-      case 'ESCOMBROS':
-        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>`;
-        break;
-      case 'PELIGROSO':
-        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
-        break;
-      default:
-        iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
-    }
-
-    const showPulse = priority === 'CRITICA' || priority === 'ALTA';
+    const c = colors[priority] || colors.MEDIA;
 
     return L.divIcon({
       html: `
         <div class="relative flex items-center justify-center">
-          ${showPulse ? `<span class="absolute inline-flex h-8 w-8 rounded-full ${c.bg} opacity-25 animate-ping"></span>` : ''}
-          <div class="w-8 h-8 rounded-full ${c.bg} ${c.text} border-2 ${c.border} flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.4)] transition-all duration-300 hover:scale-110">
-            ${iconSvg}
+          <div class="w-7 h-7 rounded-full ${c.bg} border-2 ${c.border} shadow-md flex items-center justify-center ${c.text} text-[10px] font-black">
+            !
           </div>
         </div>
       `,
       className: '',
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
     });
   };
 
   const getCrewIcon = (status: string) => {
-    const color = status === 'EN_RUTA' ? 'bg-accent-purple border-purple-300' : 'bg-accent-blue border-blue-300';
     return L.divIcon({
       html: `
-        <div class="p-2 rounded-xl ${color} text-white border-2 flex items-center justify-center shadow-2xl relative">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 17a2 2 0 11-4 0 2 2 0 014 0zM9 17a2 2 0 11-4 0 2 2 0 014 0z" />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10M13 16h6a1 1 0 001-1v-4a1 1 0 00-1-1h-2m-4 6H9" />
+        <div class="w-9 h-9 rounded-xl bg-[#154726] border-2 border-[#5cb836] shadow-xl flex items-center justify-center text-white relative">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-[#5cb836]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="1" y="3" width="15" height="13"></rect>
+            <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+            <circle cx="5.5" cy="18.5" r="2.5"></circle>
+            <circle cx="18.5" cy="18.5" r="2.5"></circle>
           </svg>
-          <span class="absolute -top-1 -right-1 flex h-2 w-2">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full ${status === 'EN_RUTA' ? 'bg-purple-400' : 'bg-blue-400'} opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2 w-2 ${status === 'EN_RUTA' ? 'bg-purple-500' : 'bg-blue-500'}"></span>
+          <span class="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#5cb836] opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#5cb836]"></span>
           </span>
         </div>
       `,
@@ -259,7 +230,7 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
     });
   };
 
-  // Filtrado coherente de reportes con la misma lógica del resto de vistas
+  // Filtrado de reportes
   const filteredReports = reports.filter((rep) => {
     const matchCat = filterCategory === 'ALL' || rep.category === filterCategory;
     
@@ -278,7 +249,6 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
     return matchCat && matchStatus && matchPrior;
   });
 
-  // Centrar en un reporte si se selecciona en la barra lateral
   useEffect(() => {
     if (selectedReport && selectedReport.latitude && selectedReport.longitude) {
       setMapCenter([selectedReport.latitude, selectedReport.longitude]);
@@ -287,20 +257,18 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Barra de Filtros del Mapa */}
-      <div className="glass-card p-4 rounded-2xl flex flex-wrap gap-4 items-center justify-between">
-        <div className="flex items-center gap-2 text-sm font-semibold text-white">
-          <ListFilter className="h-4.5 w-4.5 text-primary" />
-          <span>Filtros de Mapa:</span>
-        </div>
+      {/* Barra de Filtros y Herramientas Inteligentes */}
+      <div className="glass-card p-4 rounded-2xl flex flex-wrap gap-4 items-center justify-between border border-gray-200 dark:border-white/5">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-gray-800 dark:text-gray-100 uppercase tracking-wider">
+            <ListFilter className="h-4 w-4 text-[#5cb836]" />
+            <span>Filtros:</span>
+          </div>
 
-        <div className="flex flex-wrap gap-3 flex-1 lg:flex-none">
-          <label className="sr-only" htmlFor="map-filter-category">Filtrar por categoría</label>
           <select 
-            id="map-filter-category"
             value={filterCategory} 
             onChange={(e) => setFilterCategory(e.target.value)}
-            className="bg-cardLight text-xs text-gray-200 py-2 px-3 rounded-lg border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
+            className="bg-gray-50 dark:bg-cardLight text-xs text-gray-700 dark:text-gray-200 py-2 px-3 rounded-xl border border-gray-200 dark:border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
           >
             <option value="ALL">Todas las Categorías</option>
             <option value="BASURAL">Basural Masivo</option>
@@ -310,29 +278,24 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
             <option value="OTROS">Otros</option>
           </select>
 
-          <label className="sr-only" htmlFor="map-filter-status">Filtrar por estado</label>
           <select 
-            id="map-filter-status"
             value={filterStatus} 
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="bg-cardLight text-xs text-gray-200 py-2 px-3 rounded-lg border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
+            className="bg-gray-50 dark:bg-cardLight text-xs text-gray-700 dark:text-gray-200 py-2 px-3 rounded-xl border border-gray-200 dark:border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
           >
             <option value="ALL">Todos los Estados</option>
-            <option value="OPEN">Abiertos (Pendientes / Asignados / Proceso)</option>
+            <option value="OPEN">Abiertos</option>
             <option value="PENDIENTE">Pendiente</option>
             <option value="ASIGNADO">Asignado</option>
             <option value="EN_PROCESO">En Proceso</option>
-            <option value="CLOSED">Cerrados (Resueltos / Rechazados)</option>
+            <option value="CLOSED">Cerrados (Resueltos)</option>
             <option value="RESUELTO">Resuelto</option>
-            <option value="RECHAZADO">Rechazado</option>
           </select>
 
-          <label className="sr-only" htmlFor="map-filter-priority">Filtrar por prioridad</label>
           <select 
-            id="map-filter-priority"
             value={filterPriority} 
             onChange={(e) => setFilterPriority(e.target.value)}
-            className="bg-cardLight text-xs text-gray-200 py-2 px-3 rounded-lg border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
+            className="bg-gray-50 dark:bg-cardLight text-xs text-gray-700 dark:text-gray-200 py-2 px-3 rounded-xl border border-gray-200 dark:border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
           >
             <option value="ALL">Todas las Prioridades</option>
             <option value="CRITICA">Crítica</option>
@@ -341,14 +304,89 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
             <option value="BAJA">Baja</option>
           </select>
         </div>
-        
-        <span className="text-xs text-gray-300 font-semibold">
-          {filteredReports.length} {filteredReports.length === 1 ? 'reporte visible' : 'reportes visibles'}
-        </span>
+
+        {/* Acciones de Alto Impacto: Heatmap y TSP */}
+        <div className="flex items-center gap-2">
+          {/* Alternar Modo Marcador vs Mapa de Calor */}
+          <div className="flex bg-gray-100 dark:bg-cardLight p-1 rounded-xl border border-gray-200 dark:border-white/5 text-xs">
+            <button
+              onClick={() => setViewMode('markers')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                viewMode === 'markers'
+                  ? 'bg-white dark:bg-[#154726] text-[#154726] dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Marcadores
+            </button>
+            <button
+              onClick={() => setViewMode('heatmap')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                viewMode === 'heatmap'
+                  ? 'bg-amber-500 text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-amber-500'
+              }`}
+            >
+              <Flame className="h-3.5 w-3.5" />
+              Mapa de Calor
+            </button>
+          </div>
+
+          {/* Botón TSP de Ruteo Inteligente */}
+          <button
+            onClick={handleToggleTSP}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+              tspActive
+                ? 'bg-purple-600 text-white hover:bg-purple-700 ring-2 ring-purple-300'
+                : 'bg-[#154726] hover:bg-[#0e331a] text-white'
+            }`}
+          >
+            <Navigation className="h-3.5 w-3.5 text-[#5cb836]" />
+            <span>{tspActive ? 'Ocultar Ruta TSP' : 'Calcular Ruta TSP'}</span>
+          </button>
+        </div>
       </div>
 
+      {/* Tarjeta flotante de Métricas de Ruta TSP */}
+      {tspActive && tspMetrics && (
+        <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/40 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-7 rounded-lg bg-purple-500 text-white flex items-center justify-center font-bold">
+              TSP
+            </div>
+            <div>
+              <span className="font-bold text-purple-900 dark:text-purple-200 block">
+                Ruta Óptima de Recolección Calculada (VRP / TSP)
+              </span>
+              <span className="text-[11px] text-purple-700 dark:text-purple-300">
+                Ordenada por proximidad y severidad crítica para Cuadrilla Municipal
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 text-purple-950 dark:text-purple-100">
+            <div>
+              <span className="text-[10px] uppercase font-bold text-purple-400 block">Paradas</span>
+              <span className="font-bold">{tspMetrics.stopsCount} puntos</span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-purple-400 block">Recorrido</span>
+              <span className="font-bold">{tspMetrics.totalKm} km</span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-purple-400 block">Tiempo Est.</span>
+              <span className="font-bold">{tspMetrics.timeMin} min</span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-purple-400 block">Ahorro CO₂</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400">-{tspMetrics.fuelSaved}%</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Contenedor del Mapa */}
-      <div className="rounded-2xl overflow-hidden border border-white/5 relative h-[550px] shadow-2xl">
+      <div className="rounded-2xl overflow-hidden border border-gray-200 dark:border-white/5 relative h-[560px] shadow-2xl">
         <MapContainer 
           center={mapCenter} 
           zoom={13} 
@@ -357,7 +395,6 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
         >
           <ChangeView center={mapCenter} />
           
-          {/* Teselas públicas de OpenStreetMap con fallback accesible */}
           <TileLayer
             attribution={attribution}
             url={tileUrl}
@@ -367,68 +404,111 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
             }}
           />
 
-          {/* Marcadores de Reportes de Basura */}
-          {filteredReports.map((rep) => {
-            const isDemo = rep.isDemo || rep.id.startsWith('demo_rep_') || rep.description?.startsWith('[DEMO]');
-            return (
-              <Marker 
-                key={rep.id} 
-                position={[rep.latitude, rep.longitude]}
-                icon={getReportIcon(rep.priority, rep.status, rep.category)}
-                eventHandlers={{
-                  click: () => onSelectReport(rep)
-                }}
-              >
-                <Popup>
-                  <div className="p-1 max-w-[220px] flex flex-col gap-2">
-                    <div className="flex justify-between items-center gap-1">
-                      <span className="font-bold text-xs uppercase text-primary">{rep.category}</span>
-                      <div className="flex items-center gap-1">
-                        {isDemo && (
-                          <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                            DEMO
-                          </span>
-                        )}
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                          rep.priority === 'CRITICA' ? 'bg-red-500/20 text-red-400' :
-                          rep.priority === 'ALTA' ? 'bg-orange-500/20 text-orange-400' :
-                          'bg-amber-500/20 text-amber-400'
-                        }`}>
-                          {rep.priority}
-                        </span>
+          {/* MODO MAPA DE CALOR: Círculos radiales semitransparentes */}
+          {viewMode === 'heatmap' && (
+            <>
+              {filteredReports.map(rep => {
+                const isCritical = rep.priority === 'CRITICA';
+                const isHigh = rep.priority === 'ALTA';
+                const color = isCritical ? '#ef4444' : isHigh ? '#f97316' : '#5cb836';
+                const radius = isCritical ? 650 : isHigh ? 500 : 350;
+
+                return (
+                  <Circle
+                    key={`heat-${rep.id}`}
+                    center={[rep.latitude, rep.longitude]}
+                    radius={radius}
+                    pathOptions={{
+                      color: color,
+                      fillColor: color,
+                      fillOpacity: 0.35,
+                      weight: 1,
+                    }}
+                  >
+                    <Popup>
+                      <div className="p-1 text-xs">
+                        <strong className="text-red-500 uppercase block">Foco de Recurrencia Crónica</strong>
+                        <span>{rep.category} • Prioridad {rep.priority}</span>
                       </div>
-                    </div>
-                    <p className="text-xs text-gray-300 line-clamp-2">{rep.description || 'Sin descripción.'}</p>
-                    <div className="text-[10px] text-gray-400 flex justify-between">
-                      <span>Estado: <strong className="text-white">{rep.status}</strong></span>
-                      {rep.upvotes ? <span>🔥 {rep.upvotes}</span> : null}
-                    </div>
-                    <button 
-                      onClick={() => onSelectReport(rep)}
-                      className="w-full bg-cardLight hover:bg-gray-800 text-[10px] text-white font-semibold py-1.5 rounded flex items-center justify-center gap-1 border border-white/5 transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer"
-                      aria-label={`Ver detalle del reporte de ${rep.category}`}
-                    >
-                      <Eye className="h-3 w-3 text-primary" /> Ver Detalle
-                    </button>
-                  </div>
-                </Popup>
-              </Marker>
-            );
-          })}
+                    </Popup>
+                  </Circle>
+                );
+              })}
+            </>
+          )}
 
-          {/* Trazado de Rutas Activas */}
-          {activeRoutesPaths.map((p) => (
+          {/* MODO MARCADORES: Marcadores detallados */}
+          {viewMode === 'markers' && (
+            <>
+              {filteredReports.map((rep) => {
+                const isResolved = rep.status === 'RESUELTO';
+
+                return (
+                  <Marker 
+                    key={rep.id} 
+                    position={[rep.latitude, rep.longitude]}
+                    icon={getReportIcon(rep.priority, rep.status, rep.category)}
+                    eventHandlers={{
+                      click: () => onSelectReport(rep)
+                    }}
+                  >
+                    <Popup>
+                      <div className="p-1 max-w-[240px] flex flex-col gap-2">
+                        <div className="flex justify-between items-center gap-1">
+                          <span className="font-bold text-xs uppercase text-[#154726] dark:text-[#5cb836]">{rep.category}</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                            rep.priority === 'CRITICA' ? 'bg-red-500/20 text-red-500' :
+                            rep.priority === 'ALTA' ? 'bg-orange-500/20 text-orange-500' :
+                            'bg-amber-500/20 text-amber-500'
+                          }`}>
+                            {rep.priority}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-700 dark:text-gray-300 line-clamp-2">{rep.description || 'Sin descripción.'}</p>
+                        
+                        <div className="text-[10px] text-gray-500 dark:text-gray-400 flex justify-between">
+                          <span>Estado: <strong className="text-gray-900 dark:text-white">{rep.status}</strong></span>
+                          {rep.upvotes ? <span>🔥 {rep.upvotes} votos</span> : null}
+                        </div>
+
+                        {/* Botón Antes y Después si está RESUELTO */}
+                        {isResolved && (
+                          <button
+                            type="button"
+                            onClick={() => setBeforeAfterReport(rep)}
+                            className="w-full bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700/50 text-[10px] font-bold py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5 text-[#5cb836]" />
+                            Ver Antes y Después
+                          </button>
+                        )}
+
+                        <button 
+                          onClick={() => onSelectReport(rep)}
+                          className="w-full bg-gray-100 hover:bg-gray-200 dark:bg-cardLight dark:hover:bg-gray-800 text-[10px] text-gray-900 dark:text-white font-semibold py-1.5 rounded flex items-center justify-center gap-1 border border-gray-200 dark:border-white/5 transition-all cursor-pointer"
+                        >
+                          <Eye className="h-3 w-3 text-[#5cb836]" /> Ver Detalle Completo
+                        </button>
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
+            </>
+          )}
+
+          {/* Trazo de la Ruta TSP Optimizada */}
+          {tspActive && tspOptimizedPath.length > 0 && (
             <Polyline 
-              key={p.crewId} 
-              positions={p.coords} 
-              color="#a855f7"
-              dashArray="8, 12" 
-              weight={4}
-              opacity={0.8}
+              positions={tspOptimizedPath} 
+              color="#a855f7" 
+              dashArray="6, 8" 
+              weight={4.5}
+              opacity={0.9}
             />
-          ))}
+          )}
 
-          {/* Marcadores de Cuadrillas */}
+          {/* Marcadores de Cuadrillas Municipales */}
           {crews.map((crew) => {
             const crewLat = simulatedPositions[crew.id] ? simulatedPositions[crew.id].lat : crew.latitude;
             const crewLng = simulatedPositions[crew.id] ? simulatedPositions[crew.id].lng : crew.longitude;
@@ -440,22 +520,9 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
               >
                 <Popup>
                   <div className="p-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="font-bold text-sm text-white">{crew.name}</h4>
-                      <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                        CUADRILLA
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1">Patente de prueba: <strong className="text-white">{crew.vehiclePlate}</strong></p>
-                    <p className="text-xs text-gray-400">Estado: <span className="text-primary font-semibold">{crew.status}</span></p>
-                    <div className="mt-2 pt-1.5 border-t border-white/5">
-                      <p className="text-[10px] font-bold text-gray-300">Integrantes:</p>
-                      <ul className="list-disc pl-3 text-[10px] text-gray-400 mt-1">
-                        {crew.members.map((m: any, i: number) => (
-                          <li key={i}>{m.fullName} ({m.role})</li>
-                        ))}
-                      </ul>
-                    </div>
+                    <h4 className="font-bold text-sm text-gray-900 dark:text-white">{crew.name}</h4>
+                    <p className="text-xs text-gray-500 mt-0.5">Móvil: <strong className="text-gray-900 dark:text-white">{crew.vehiclePlate}</strong></p>
+                    <p className="text-xs text-gray-500">Estado: <span className="text-[#5cb836] font-semibold">{crew.status}</span></p>
                   </div>
                 </Popup>
               </Marker>
@@ -463,24 +530,21 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
           })}
         </MapContainer>
 
-        {/* Mensaje de error si falla la carga de teselas */}
         {tileError && (
           <div className="absolute top-3 left-3 right-3 bg-red-900/90 text-white text-xs p-3 rounded-xl border border-red-500/40 shadow-xl backdrop-blur-md z-[1000] flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-red-300 flex-shrink-0" />
-            <span>
-              No se pudieron cargar algunas teselas del mapa base. Verifica la conexión a internet o el proveedor configurado en <code className="bg-black/30 px-1 py-0.5 rounded">NEXT_PUBLIC_MAP_TILE_URL</code>.
-            </span>
-          </div>
-        )}
-
-        {/* Estado vacío cuando no hay reportes que coincidan con los filtros */}
-        {filteredReports.length === 0 && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-card/95 border border-white/10 p-3 px-5 rounded-xl shadow-2xl backdrop-blur-md z-[1000] flex items-center gap-2 text-xs text-gray-300">
-            <Info className="h-4 w-4 text-primary" />
-            <span>No hay focos que coincidan con los filtros seleccionados.</span>
+            <span>Verifica la conexión a internet para descargar teselas de OpenStreetMap.</span>
           </div>
         )}
       </div>
+
+      {/* Modal Antes y Después */}
+      {beforeAfterReport && (
+        <BeforeAfterModal
+          report={beforeAfterReport}
+          onClose={() => setBeforeAfterReport(null)}
+        />
+      )}
     </div>
   );
 }

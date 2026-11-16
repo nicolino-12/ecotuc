@@ -33,6 +33,7 @@ export interface Report {
   observations: string | null;
   createdAt: string;
   resolvedAt?: string | null;
+  cleanedImageUrl?: string | null;
   citizenEmail?: string;
   citizenName?: string;
   upvotes?: number;
@@ -251,6 +252,7 @@ export const DEMO_REPORTS: Report[] = [
     observations: 'Se retiraron 340 kg de residuos y se colocó cartel de prohibición de arrojo de basura.',
     createdAt: new Date(Date.now() - 3600000 * 30).toISOString(),
     resolvedAt: new Date(Date.now() - 3600000 * 25).toISOString(), // 5 horas de resolución para cálculo real de SLA
+    cleanedImageUrl: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&auto=format&fit=crop',
     citizenEmail: 'ciudadano.demo@ecotuc.local',
     citizenName: 'Ciudadano Demo Tucumán',
     upvotes: 5,

@@ -35,6 +35,9 @@ const MapSelector = dynamic(() => import('../components/MapSelector'), {
 import CrewsPanel from '../components/CrewsPanel';
 import ReportsTable from '../components/ReportsTable';
 import MockMobileSimulator from '../components/MockMobileSimulator';
+import AIWasteScanner from '../components/AIWasteScanner';
+import ExecutiveReportModal from '../components/ExecutiveReportModal';
+import BeforeAfterModal from '../components/BeforeAfterModal';
 
 export default function AppContainer() {
   // Estado de sesión
@@ -96,6 +99,10 @@ export default function AppContainer() {
 
   // Filtros globales de métricas para el dashboard de operador
   const [metricFilter, setMetricFilter] = useState<string>('ALL');
+
+  // Modales de mejoras de alto impacto
+  const [showExecutiveReport, setShowExecutiveReport] = useState(false);
+  const [selectedBeforeAfter, setSelectedBeforeAfter] = useState<any | null>(null);
 
   const categoryDistribution = useMemo(() => {
     const counts: Record<string, number> = {
@@ -773,44 +780,31 @@ export default function AppContainer() {
   // VISTA 1: LOGIN Y REGISTRO (Página de Inicio sin autenticar)
   if (!user) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
-        {/* Luces de fondo decorativas animadas */}
-        <div className="absolute top-1/4 left-1/4 h-[300px] w-[300px] bg-primary/15 rounded-full blur-[100px] text-primary animate-float-1"></div>
-        <div className="absolute bottom-1/4 right-1/4 h-[300px] w-[300px] bg-accent-purple/10 rounded-full blur-[100px] text-accent-purple animate-float-2"></div>
+      <div className="min-h-screen bg-gray-50 dark:bg-background flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
+        {/* Luces de fondo decorativas suaves */}
+        <div className="absolute top-1/4 left-1/4 h-[320px] w-[320px] bg-[#5cb836]/15 rounded-full blur-[110px] pointer-events-none"></div>
+        <div className="absolute bottom-1/4 right-1/4 h-[320px] w-[320px] bg-[#154726]/15 rounded-full blur-[110px] pointer-events-none"></div>
 
-        <div className="max-w-md w-full glass-panel p-8 rounded-3xl border border-white/5 flex flex-col gap-6 relative z-10 shadow-2xl transition-all duration-300">
-          {/* Logo */}
+        <div className="max-w-md w-full bg-white dark:bg-[#121826] p-8 rounded-3xl border-2 border-gray-200 dark:border-white/10 shadow-2xl flex flex-col gap-6 relative z-10 transition-all duration-300">
+          {/* Logo y Título */}
           <div className="text-center flex flex-col items-center gap-2">
-            <div className="relative w-16 h-16 rounded-2xl overflow-hidden border border-white/10 shadow-lg glow-green flex items-center justify-center mb-1 bg-black/20">
-              <img src="/logo.png" alt="EcoTuc Logo" className="object-cover w-full h-full" />
+            <div className="relative w-16 h-16 rounded-2xl overflow-hidden border border-gray-200 dark:border-white/10 shadow-md flex items-center justify-center mb-1 bg-white p-1">
+              <img src="/logo.png" alt="EcoTuc Logo" className="object-contain w-full h-full" />
             </div>
-            <h2 className="text-2xl font-bold tracking-tight text-white">EcoTuc</h2>
-            <p className="text-xs text-gray-300">Gestión Inteligente de Microbasurales en Tucumán</p>
-          </div>
-
-          {/* Aclaración transparente de Base de Datos y Persistencia */}
-          <div className="flex flex-col items-center justify-center gap-1 text-[11px] text-gray-300 bg-cardLight/40 p-3 rounded-2xl border border-white/5">
-            <div className="flex items-center gap-1.5 text-primary font-semibold">
-              <Database className="h-3.5 w-3.5" />
-              <span>{apiOnline ? 'Conectado a Servidor Central (PostgreSQL)' : 'Almacenamiento Local (Navegador - localStorage)'}</span>
-            </div>
-            <p className="text-[10px] text-gray-400 text-center max-w-xs leading-normal">
-              {apiOnline 
-                ? 'Los datos se sincronizan con la base central compartida.' 
-                : 'Los datos residen en la memoria local de este navegador. Al iniciar el backend con PostgreSQL se sincronizan en red.'}
-            </p>
+            <h2 className="text-2xl font-black tracking-tight text-black dark:text-white">EcoTuc</h2>
+            <p className="text-xs text-black dark:text-gray-300 font-bold">Gestión Inteligente de Microbasurales en Tucumán</p>
           </div>
 
           {/* Mensajes de Feedback */}
           {authError && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3.5 rounded-xl text-xs flex items-start gap-2 animate-pulse">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div className="bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-500/30 text-red-700 dark:text-red-400 p-3.5 rounded-xl text-xs flex items-start gap-2 animate-pulse font-bold">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
               <span>{authError}</span>
             </div>
           )}
           {authSuccess && (
-            <div className="bg-green-500/10 border border-green-500/20 text-green-400 p-3.5 rounded-xl text-xs flex items-start gap-2">
-              <CheckCircle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-400 p-3.5 rounded-xl text-xs flex items-start gap-2 font-bold">
+              <CheckCircle className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600" />
               <span>{authSuccess}</span>
             </div>
           )}
@@ -819,12 +813,14 @@ export default function AppContainer() {
             /* --- FORMULARIO DE INICIAR SESIÓN --- */
             <form onSubmit={handleLoginSubmit} className="flex flex-col gap-4">
               {/* Roles */}
-              <div className="grid grid-cols-2 gap-3 p-1 bg-black/30 rounded-xl border border-white/5">
+              <div className="grid grid-cols-2 gap-2 p-1.5 bg-gray-100 dark:bg-black/30 rounded-2xl border border-gray-200 dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setLoginRole('OPERATOR')}
-                  className={`py-2 text-xs font-semibold rounded-lg transition-all focus-visible:ring-2 focus-visible:ring-primary ${
-                    loginRole === 'OPERATOR' ? 'bg-primary text-white shadow-md' : 'text-gray-300 hover:text-white'
+                  className={`py-2 text-xs font-bold rounded-xl transition-all ${
+                    loginRole === 'OPERATOR' 
+                      ? 'bg-[#154726] text-white shadow-md' 
+                      : 'text-black dark:text-gray-300 hover:text-[#154726]'
                   }`}
                 >
                   Operador Municipal
@@ -832,8 +828,10 @@ export default function AppContainer() {
                 <button
                   type="button"
                   onClick={() => setLoginRole('CITIZEN')}
-                  className={`py-2 text-xs font-semibold rounded-lg transition-all focus-visible:ring-2 focus-visible:ring-primary ${
-                    loginRole === 'CITIZEN' ? 'bg-primary text-white shadow-md' : 'text-gray-300 hover:text-white'
+                  className={`py-2 text-xs font-bold rounded-xl transition-all ${
+                    loginRole === 'CITIZEN' 
+                      ? 'bg-[#154726] text-white shadow-md' 
+                      : 'text-black dark:text-gray-300 hover:text-[#154726]'
                   }`}
                 >
                   Ciudadano
@@ -841,27 +839,27 @@ export default function AppContainer() {
               </div>
 
               <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2.5 bg-cardLight/50 p-3.5 rounded-xl border border-white/5">
-                  <Mail className="h-4 w-4 text-gray-400" />
+                <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#1a2234] p-3.5 rounded-xl border border-gray-300 dark:border-white/10 shadow-sm focus-within:border-[#5cb836] focus-within:ring-2 focus-within:ring-[#5cb836]/30">
+                  <Mail className="h-5 w-5 text-[#154726] dark:text-[#5cb836] shrink-0" />
                   <input 
                     type="email" 
                     required
                     placeholder="Correo Electrónico"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
-                    className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    className="bg-transparent text-sm text-black dark:text-white font-bold placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none flex-1"
                     aria-label="Correo electrónico para iniciar sesión"
                   />
                 </div>
-                <div className="flex items-center gap-2.5 bg-cardLight/50 p-3.5 rounded-xl border border-white/5">
-                  <Lock className="h-4 w-4 text-gray-400" />
+                <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#1a2234] p-3.5 rounded-xl border border-gray-300 dark:border-white/10 shadow-sm focus-within:border-[#5cb836] focus-within:ring-2 focus-within:ring-[#5cb836]/30">
+                  <Lock className="h-5 w-5 text-[#154726] dark:text-[#5cb836] shrink-0" />
                   <input 
                     type="password" 
                     required
                     placeholder="Contraseña"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    className="bg-transparent text-sm text-black dark:text-white font-bold placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none flex-1"
                     aria-label="Contraseña para iniciar sesión"
                   />
                 </div>
@@ -869,7 +867,7 @@ export default function AppContainer() {
 
               <button 
                 type="submit" 
-                className="bg-primary hover:bg-primary-dark text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer"
+                className="bg-[#154726] hover:bg-[#0e331a] text-white font-bold py-3.5 rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer mt-1"
               >
                 Ingresar a la Plataforma
               </button>
@@ -882,7 +880,7 @@ export default function AppContainer() {
                     setAuthError(null);
                     setAuthSuccess(null);
                   }}
-                  className="text-xs text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded p-1"
+                  className="text-xs text-[#154726] dark:text-[#5cb836] font-bold hover:underline p-1"
                 >
                   ¿No tienes una cuenta? Regístrate aquí
                 </button>
@@ -891,14 +889,16 @@ export default function AppContainer() {
           ) : (
             /* --- FORMULARIO DE REGISTRO DE NUEVO USUARIO --- */
             <form onSubmit={handleRegisterSubmit} className="flex flex-col gap-4">
-              <span className="text-[10px] text-gray-300 font-bold uppercase tracking-wider text-center font-sans">Registrar Nuevo Usuario</span>
+              <span className="text-xs text-black dark:text-gray-200 font-bold uppercase tracking-wider text-center">Registrar Nuevo Usuario</span>
               
-              <div className="grid grid-cols-2 gap-3 p-1 bg-black/30 rounded-xl border border-white/5">
+              <div className="grid grid-cols-2 gap-2 p-1.5 bg-gray-100 dark:bg-black/30 rounded-2xl border border-gray-200 dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setRegRole('OPERATOR')}
-                  className={`py-2 text-xs font-semibold rounded-lg transition-all focus-visible:ring-2 focus-visible:ring-primary ${
-                    regRole === 'OPERATOR' ? 'bg-primary text-white shadow-md' : 'text-gray-300 hover:text-white'
+                  className={`py-2 text-xs font-bold rounded-xl transition-all ${
+                    regRole === 'OPERATOR' 
+                      ? 'bg-[#154726] text-white shadow-md' 
+                      : 'text-black dark:text-gray-300 hover:text-[#154726]'
                   }`}
                 >
                   Operador Municipal
@@ -906,43 +906,45 @@ export default function AppContainer() {
                 <button
                   type="button"
                   onClick={() => setRegRole('CITIZEN')}
-                  className={`py-2 text-xs font-semibold rounded-lg transition-all focus-visible:ring-2 focus-visible:ring-primary ${
-                    regRole === 'CITIZEN' ? 'bg-primary text-white shadow-md' : 'text-gray-300 hover:text-white'
+                  className={`py-2 text-xs font-bold rounded-xl transition-all ${
+                    regRole === 'CITIZEN' 
+                      ? 'bg-[#154726] text-white shadow-md' 
+                      : 'text-black dark:text-gray-300 hover:text-[#154726]'
                   }`}
                 >
                   Ciudadano
                 </button>
               </div>
 
-              <div className="flex flex-col gap-3 max-h-[300px] overflow-y-auto pr-1 select-custom-scroll">
-                <div className="flex items-center gap-2.5 bg-cardLight/50 p-3 rounded-xl border border-white/5">
-                  <User className="h-4 w-4 text-gray-400" />
+              <div className="flex flex-col gap-3 max-h-[300px] overflow-y-auto pr-1">
+                <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#1a2234] p-3 rounded-xl border border-gray-300 dark:border-white/10 shadow-sm focus-within:border-[#5cb836]">
+                  <User className="h-5 w-5 text-[#154726] dark:text-[#5cb836] shrink-0" />
                   <input 
                     type="text" 
                     required
                     placeholder="Nombre Completo"
                     value={regFullName}
                     onChange={(e) => setRegFullName(e.target.value)}
-                    className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    className="bg-transparent text-sm text-black dark:text-white font-bold placeholder-gray-500 focus:outline-none flex-1"
                     aria-label="Nombre completo"
                   />
                 </div>
 
-                <div className="flex items-center gap-2.5 bg-cardLight/50 p-3 rounded-xl border border-white/5">
-                  <Mail className="h-4 w-4 text-gray-400" />
+                <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#1a2234] p-3 rounded-xl border border-gray-300 dark:border-white/10 shadow-sm focus-within:border-[#5cb836]">
+                  <Mail className="h-5 w-5 text-[#154726] dark:text-[#5cb836] shrink-0" />
                   <input 
                     type="email" 
                     required
                     placeholder="Correo Electrónico"
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
-                    className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    className="bg-transparent text-sm text-black dark:text-white font-bold placeholder-gray-500 focus:outline-none flex-1"
                     aria-label="Correo electrónico para registrarse"
                   />
                 </div>
 
-                <div className="flex items-center gap-2.5 bg-cardLight/50 p-3 rounded-xl border border-white/5">
-                  <Lock className="h-4 w-4 text-gray-400" />
+                <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#1a2234] p-3 rounded-xl border border-gray-300 dark:border-white/10 shadow-sm focus-within:border-[#5cb836]">
+                  <Lock className="h-5 w-5 text-[#154726] dark:text-[#5cb836] shrink-0" />
                   <input 
                     type="password" 
                     required
@@ -950,32 +952,32 @@ export default function AppContainer() {
                     placeholder="Contraseña (mín. 6 caracteres)"
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
-                    className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    className="bg-transparent text-sm text-black dark:text-white font-bold placeholder-gray-500 focus:outline-none flex-1"
                     aria-label="Contraseña"
                   />
                 </div>
 
-                <div className="flex items-center gap-2.5 bg-cardLight/50 p-3 rounded-xl border border-white/5">
-                  <Phone className="h-4 w-4 text-gray-400" />
+                <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#1a2234] p-3 rounded-xl border border-gray-300 dark:border-white/10 shadow-sm focus-within:border-[#5cb836]">
+                  <Phone className="h-5 w-5 text-[#154726] dark:text-[#5cb836] shrink-0" />
                   <input 
                     type="tel" 
                     required
                     placeholder="Teléfono de Contacto"
                     value={regPhone}
                     onChange={(e) => setRegPhone(e.target.value)}
-                    className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    className="bg-transparent text-sm text-black dark:text-white font-bold placeholder-gray-500 focus:outline-none flex-1"
                     aria-label="Teléfono de contacto"
                   />
                 </div>
 
-                <div className="flex items-center gap-2.5 bg-cardLight/50 p-3 rounded-xl border border-white/5">
-                  <Home className="h-4 w-4 text-gray-400" />
+                <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#1a2234] p-3 rounded-xl border border-gray-300 dark:border-white/10 shadow-sm focus-within:border-[#5cb836]">
+                  <Home className="h-5 w-5 text-[#154726] dark:text-[#5cb836] shrink-0" />
                   <input 
                     type="text" 
                     placeholder="Dirección o Barrio en Tucumán (Opcional)"
                     value={regAddress}
                     onChange={(e) => setRegAddress(e.target.value)}
-                    className="bg-transparent text-xs text-white focus:outline-none flex-1"
+                    className="bg-transparent text-sm text-black dark:text-white font-bold placeholder-gray-500 focus:outline-none flex-1"
                     aria-label="Dirección o barrio"
                   />
                 </div>
@@ -983,7 +985,7 @@ export default function AppContainer() {
 
               <button 
                 type="submit" 
-                className="bg-primary hover:bg-primary-dark text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer"
+                className="bg-[#154726] hover:bg-[#0e331a] text-white font-bold py-3.5 rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer mt-1"
               >
                 Completar Registro y Entrar
               </button>
@@ -996,7 +998,7 @@ export default function AppContainer() {
                     setAuthError(null);
                     setAuthSuccess(null);
                   }}
-                  className="text-xs text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded p-1"
+                  className="text-xs text-[#154726] dark:text-[#5cb836] font-bold hover:underline p-1"
                 >
                   ¿Ya tienes cuenta? Inicia sesión aquí
                 </button>
@@ -1004,15 +1006,17 @@ export default function AppContainer() {
             </form>
           )}
 
-          {/* Botones de Prellenado con Cuentas Demo Ficticias */}
+          {/* Botones de Prellenado con Cuentas Demo */}
           {authMode === 'login' && (
-            <div className="border-t border-white/5 pt-4 flex flex-col gap-2">
-              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider text-center">Acceso rápido con cuentas demo:</span>
-              <div className="grid grid-cols-2 gap-2">
+            <div className="border-t border-gray-200 dark:border-white/10 pt-4 flex flex-col gap-2.5">
+              <span className="text-xs text-black dark:text-gray-300 font-bold uppercase tracking-wider text-center">
+                Acceso rápido con cuentas demo:
+              </span>
+              <div className="grid grid-cols-2 gap-2.5">
                 <button 
                   type="button"
                   onClick={() => handlePreFill('OPERATOR')}
-                  className="bg-cardLight hover:bg-gray-800 text-[10px] text-gray-200 py-2 rounded-lg border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none transition-all cursor-pointer"
+                  className="bg-gray-100 hover:bg-gray-200 dark:bg-cardLight dark:hover:bg-gray-800 text-xs text-black dark:text-white font-bold py-2.5 px-3 rounded-xl border border-gray-300 dark:border-white/10 transition-all shadow-sm cursor-pointer"
                   aria-label="Iniciar sesión con cuenta de operador demo"
                 >
                   🔑 Operador (Demo)
@@ -1020,7 +1024,7 @@ export default function AppContainer() {
                 <button 
                   type="button"
                   onClick={() => handlePreFill('CITIZEN')}
-                  className="bg-cardLight hover:bg-gray-800 text-[10px] text-gray-200 py-2 rounded-lg border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none transition-all cursor-pointer"
+                  className="bg-gray-100 hover:bg-gray-200 dark:bg-cardLight dark:hover:bg-gray-800 text-xs text-black dark:text-white font-bold py-2.5 px-3 rounded-xl border border-gray-300 dark:border-white/10 transition-all shadow-sm cursor-pointer"
                   aria-label="Iniciar sesión con cuenta de ciudadano demo"
                 >
                   🔑 Ciudadano (Demo)
@@ -1036,34 +1040,34 @@ export default function AppContainer() {
   // VISTA 2: CITIZEN PORTAL (Si el rol logueado es ciudadano)
   if (user.role === 'CITIZEN') {
     return (
-      <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans relative overflow-hidden">
+      <div className="min-h-screen bg-background text-black dark:text-gray-100 flex flex-col font-sans relative overflow-hidden">
         {/* Luces de fondo animadas */}
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none animate-float-1"></div>
         <div className="absolute bottom-[20%] right-[-5%] w-[450px] h-[450px] bg-accent-purple/5 rounded-full blur-[100px] pointer-events-none animate-float-2"></div>
         
         {/* Navbar Ciudadano */}
-        <header className="w-full glass-panel sticky top-0 z-40 border-b border-white/5 py-4 px-6 md:px-12 flex justify-between items-center">
+        <header className="w-full glass-panel sticky top-0 z-40 border-b border-gray-200 dark:border-white/5 py-4 px-6 md:px-12 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="relative w-11 h-11 rounded-xl overflow-hidden border border-white/10 shadow-lg glow-green flex items-center justify-center bg-black/20">
+            <div className="relative w-11 h-11 rounded-xl overflow-hidden border border-gray-200 dark:border-white/10 shadow-lg glow-green flex items-center justify-center bg-gray-100 dark:bg-black/20">
               <img src="/logo.png" alt="EcoTuc Logo" className="object-cover w-full h-full" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-white">EcoTuc Ciudadano</h1>
-              <p className="text-xs text-gray-400">Portal Web de Reporte y Seguimiento</p>
+              <h1 className="text-xl font-bold tracking-tight text-black dark:text-white">EcoTuc Ciudadano</h1>
+              <p className="text-xs text-gray-700 dark:text-gray-400 font-bold">Portal Web de Reporte y Seguimiento</p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             {/* Indicador de persistencia */}
-            <div className="hidden sm:flex items-center gap-1.5 text-[11px] bg-cardLight/50 px-3 py-1.5 rounded-full border border-white/5 text-gray-300">
+            <div className="hidden sm:flex items-center gap-1.5 text-[11px] bg-gray-100 dark:bg-cardLight/50 px-3 py-1.5 rounded-full border border-gray-200 dark:border-white/5 text-gray-800 dark:text-gray-300">
               <Database className="h-3.5 w-3.5 text-primary" />
               <span>{apiOnline ? 'Servidor Central' : 'Almacenamiento Local (Navegador)'}</span>
             </div>
 
-            <span className="text-xs text-gray-200 font-semibold">{user.fullName}</span>
+            <span className="text-xs text-gray-900 dark:text-gray-200 font-bold">{user.fullName}</span>
             <button 
               onClick={() => setUser(null)}
-              className="text-red-400 hover:text-red-300 flex items-center gap-1.5 text-xs bg-red-500/10 py-1.5 px-3 rounded-lg border border-red-500/20 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer"
+              className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 flex items-center gap-1.5 text-xs bg-red-500/10 hover:bg-red-500/20 py-1.5 px-3 rounded-lg border border-red-500/20 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer"
               aria-label="Cerrar sesión"
             >
               <LogOut className="h-3.5 w-3.5" /> Salir
@@ -1073,11 +1077,13 @@ export default function AppContainer() {
 
         {/* Tabs: Nuevo Reporte / Mis Reportes */}
         <div className="px-6 md:px-12 pt-4">
-          <div className="flex bg-card/60 p-1.5 rounded-xl border border-white/5 self-start gap-1 w-fit">
+          <div className="flex bg-gray-200/80 dark:bg-card/60 p-1.5 rounded-xl border border-gray-300 dark:border-white/5 self-start gap-1 w-fit">
             <button 
               onClick={() => setCitizenView('new')}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
-                citizenView === 'new' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-400 hover:text-white'
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+                citizenView === 'new' 
+                  ? 'bg-primary text-white shadow-md shadow-primary/20' 
+                  : 'text-gray-800 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-300/60 dark:hover:bg-white/5'
               }`}
             >
               <PlusCircle className="h-4 w-4" />
@@ -1085,8 +1091,10 @@ export default function AppContainer() {
             </button>
             <button 
               onClick={() => { setCitizenView('my_reports'); loadData(); }}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
-                citizenView === 'my_reports' ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-gray-400 hover:text-white'
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+                citizenView === 'my_reports' 
+                  ? 'bg-primary text-white shadow-md shadow-primary/20' 
+                  : 'text-gray-800 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-300/60 dark:hover:bg-white/5'
               }`}
             >
               <Eye className="h-4 w-4" />
@@ -1097,15 +1105,15 @@ export default function AppContainer() {
 
         {/* MODAL / TARJETA DE CONFIRMACIÓN CLARA DEL REPORTE CREADO */}
         {submittedReport && (
-          <div className="mx-6 md:mx-12 mt-4 bg-emerald-950/50 border border-emerald-500/40 p-5 rounded-2xl flex flex-col gap-3 shadow-2xl animate-in fade-in slide-in-from-top-3 duration-300">
+          <div className="mx-6 md:mx-12 mt-4 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-400 dark:border-emerald-500/40 p-5 rounded-2xl flex flex-col gap-3 shadow-lg dark:shadow-2xl animate-in fade-in slide-in-from-top-3 duration-300">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl">
+                <div className="p-2.5 bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-xl">
                   <CheckCircle className="h-6 w-6" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">¡Incidencia Reportada con Éxito!</h3>
-                  <p className="text-xs text-gray-300 mt-0.5">
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">¡Incidencia Reportada con Éxito!</h3>
+                  <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">
                     {submittedReport.isDraft 
                       ? 'El reporte fue guardado como borrador local en este dispositivo.' 
                       : 'El reporte fue ingresado correctamente y ya está disponible para el equipo operativo municipal.'}
@@ -1114,29 +1122,29 @@ export default function AppContainer() {
               </div>
               <button 
                 onClick={() => setSubmittedReport(null)}
-                className="text-gray-400 hover:text-white text-xs p-1"
+                className="text-gray-500 hover:text-black dark:text-gray-400 dark:hover:text-white text-xs p-1"
                 aria-label="Cerrar confirmación"
               >
                 ✕
               </button>
             </div>
 
-            <div className="bg-black/30 p-3.5 rounded-xl border border-white/5 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="bg-white/80 dark:bg-black/30 p-3.5 rounded-xl border border-gray-200 dark:border-white/5 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div>
-                <span className="text-[10px] text-gray-400 uppercase font-bold block">Categoría</span>
-                <span className="text-white font-semibold">{submittedReport.category}</span>
+                <span className="text-[10px] text-gray-600 dark:text-gray-400 uppercase font-bold block">Categoría</span>
+                <span className="text-black dark:text-white font-bold">{submittedReport.category}</span>
               </div>
               <div>
-                <span className="text-[10px] text-gray-400 uppercase font-bold block">Prioridad Calculada</span>
-                <span className="text-primary font-semibold">{submittedReport.priority} ({submittedReport.priorityScore.toFixed(0)} pts)</span>
+                <span className="text-[10px] text-gray-600 dark:text-gray-400 uppercase font-bold block">Prioridad Calculada</span>
+                <span className="text-primary font-bold">{submittedReport.priority} ({submittedReport.priorityScore.toFixed(0)} pts)</span>
               </div>
               <div>
-                <span className="text-[10px] text-gray-400 uppercase font-bold block">Ubicación</span>
-                <span className="text-white font-mono">{submittedReport.latitude.toFixed(5)}, {submittedReport.longitude.toFixed(5)}</span>
+                <span className="text-[10px] text-gray-600 dark:text-gray-400 uppercase font-bold block">Ubicación</span>
+                <span className="text-black dark:text-white font-mono font-bold">{submittedReport.latitude.toFixed(5)}, {submittedReport.longitude.toFixed(5)}</span>
               </div>
               <div>
-                <span className="text-[10px] text-gray-400 uppercase font-bold block">Estado</span>
-                <span className="text-amber-400 font-semibold">{submittedReport.status}</span>
+                <span className="text-[10px] text-gray-600 dark:text-gray-400 uppercase font-bold block">Estado</span>
+                <span className="text-amber-600 dark:text-amber-400 font-bold">{submittedReport.status}</span>
               </div>
             </div>
 
@@ -1149,7 +1157,7 @@ export default function AppContainer() {
               </button>
               <button
                 onClick={() => setSubmittedReport(null)}
-                className="bg-cardLight hover:bg-gray-800 text-gray-300 text-xs py-2 px-4 rounded-xl border border-white/5 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
+                className="bg-gray-200 dark:bg-cardLight hover:bg-gray-300 dark:hover:bg-gray-800 text-black dark:text-gray-300 text-xs py-2 px-4 rounded-xl border border-gray-300 dark:border-white/5 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
               >
                 Crear otro reporte
               </button>
@@ -1166,20 +1174,20 @@ export default function AppContainer() {
             {/* Formulario de Reporte Web */}
             <div className="glass-card p-6 md:p-8 rounded-2xl flex flex-col gap-6">
               <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <PlusCircle className="h-5 w-5 text-primary" />
                   Registrar Reporte de Basura
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">Completa los campos obligatorios e indica el punto en el mapa de Tucumán.</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 font-bold">Completa los campos obligatorios e indica el punto en el mapa de Tucumán.</p>
               </div>
 
               {/* Guía explicativa de ubicación */}
-              <div className="bg-cardLight/40 p-3.5 rounded-xl border border-white/5 text-xs flex flex-col gap-1 text-gray-300">
-                <span className="font-semibold text-white flex items-center gap-1.5">
+              <div className="bg-emerald-50/60 dark:bg-cardLight/40 p-3.5 rounded-xl border border-emerald-200 dark:border-white/5 text-xs flex flex-col gap-1 text-gray-800 dark:text-gray-300">
+                <span className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
                   <Info className="h-4 w-4 text-primary flex-shrink-0" />
                   ¿Cómo se determina la ubicación del reporte?
                 </span>
-                <p className="text-[11px] leading-relaxed text-gray-400">
+                <p className="text-[11px] leading-relaxed text-gray-700 dark:text-gray-400 font-semibold">
                   Haz clic directo sobre el mapa de la derecha o arrastra el marcador verde hasta el lugar exacto. También puedes escribir una calle y pulsar "Buscar", o usar el botón GPS. Verifica que las coordenadas mostradas coincidan con el foco antes de enviar.
                 </p>
               </div>
@@ -1187,16 +1195,16 @@ export default function AppContainer() {
               <form onSubmit={handleCitizenSubmit} className="flex flex-col gap-4">
                 {/* 1. Fotografía (Obligatoria) */}
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs text-gray-300 font-semibold uppercase flex items-center justify-between">
+                  <label className="text-xs text-gray-800 dark:text-gray-300 font-bold uppercase flex items-center justify-between">
                     <span>Fotografía del Incidente <span className="text-primary">*</span>:</span>
-                    {!customPhoto && <span className="text-[10px] text-amber-400 font-normal">Obligatorio</span>}
+                    {!customPhoto && <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">Obligatorio</span>}
                   </label>
                   
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-3">
-                      <label className="flex-1 flex items-center justify-center gap-2 bg-cardLight/50 hover:bg-gray-800 text-xs text-white p-3.5 rounded-xl border border-dashed border-white/10 hover:border-primary cursor-pointer transition-all focus-within:ring-2 focus-within:ring-primary">
-                        <Camera className="h-4 w-4 text-primary" />
-                        <span className="font-sans">{customPhoto ? '📷 Cambiar foto seleccionada' : '📷 Subir foto desde dispositivo'}</span>
+                      <label className="flex-1 flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 dark:bg-cardLight/50 dark:hover:bg-gray-800 text-xs text-black dark:text-white p-3.5 rounded-xl border-2 border-dashed border-gray-300 dark:border-white/20 hover:border-primary dark:hover:border-primary cursor-pointer transition-all focus-within:ring-2 focus-within:ring-primary shadow-sm">
+                        <Camera className="h-5 w-5 text-primary flex-shrink-0" />
+                        <span className="font-bold text-black dark:text-white">{customPhoto ? '📷 Cambiar foto seleccionada' : '📷 Subir foto desde dispositivo'}</span>
                         <input 
                           type="file" 
                           accept="image/*"
@@ -1221,7 +1229,7 @@ export default function AppContainer() {
                             setCustomPhoto(null);
                             setCustomFile(null);
                           }}
-                          className="bg-red-500/10 hover:bg-red-500/20 text-red-400 p-3.5 rounded-xl border border-red-500/20 text-xs font-semibold font-sans focus-visible:ring-2 focus-visible:ring-primary"
+                          className="bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 p-3.5 rounded-xl border border-red-500/20 text-xs font-bold transition-all focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
                         >
                           Eliminar
                         </button>
@@ -1229,26 +1237,37 @@ export default function AppContainer() {
                     </div>
 
                     {customPhoto && (
-                      <div className="h-32 w-full rounded-xl overflow-hidden border border-primary/20 relative shadow-inner">
+                      <div className="h-36 w-full rounded-xl overflow-hidden border-2 border-primary/40 relative shadow-md">
                         <img src={customPhoto} alt="Vista previa de foco de basura" className="object-cover w-full h-full" />
-                        <div className="absolute top-2 left-2 bg-primary text-[9px] text-white px-2 py-0.5 rounded-full font-bold uppercase font-sans">
+                        <div className="absolute top-2 left-2 bg-primary text-[10px] text-white px-2.5 py-1 rounded-full font-bold uppercase shadow">
                           Foto cargada correctamente
                         </div>
                       </div>
+                    )}
+
+                    {/* Escaneo y Clasificación Inteligente de Residuos por IA */}
+                    {customPhoto && (
+                      <AIWasteScanner
+                        photoUrl={customPhoto}
+                        onApplyAnalysis={(analysis) => {
+                          setCitCategory(analysis.category);
+                          setCitDesc(analysis.description);
+                        }}
+                      />
                     )}
                   </div>
                 </div>
 
                 {/* 2. Categoría (Obligatoria) */}
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="cit-category" className="text-xs text-gray-300 font-semibold">
+                  <label htmlFor="cit-category" className="text-xs text-gray-800 dark:text-gray-300 font-bold">
                     Categoría de Incidencia <span className="text-primary">*</span>:
                   </label>
                   <select
                     id="cit-category"
                     value={citCategory}
                     onChange={(e) => setCitCategory(e.target.value)}
-                    className="bg-cardLight text-xs text-white p-3 rounded-xl border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
+                    className="bg-gray-50 dark:bg-cardLight text-xs text-black dark:text-white font-bold p-3 rounded-xl border border-gray-300 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none shadow-sm"
                   >
                     <option value="BASURAL">Basural Masivo</option>
                     <option value="ALCANTARILLA">Alcantarilla Tapada</option>
@@ -1260,7 +1279,7 @@ export default function AppContainer() {
 
                 {/* 3. Input de Dirección / Coordenadas / Maps Link */}
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="cit-location-input" className="text-xs text-gray-300 font-semibold">
+                  <label htmlFor="cit-location-input" className="text-xs text-gray-800 dark:text-gray-300 font-bold">
                     Dirección de Tucumán o Coordenadas de Maps:
                   </label>
                   <div className="flex gap-2">
@@ -1277,11 +1296,11 @@ export default function AppContainer() {
                             handleSearchAddress();
                           }
                         }}
-                        className="bg-cardLight text-xs text-white p-3.5 pr-10 rounded-xl border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none w-full"
+                        className="bg-gray-50 dark:bg-cardLight text-xs text-black dark:text-white font-bold p-3.5 pr-10 rounded-xl border border-gray-300 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none w-full shadow-sm"
                       />
                       {locationFeedback && (
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-primary" title={locationFeedback}>
-                          <Check className="h-4 w-4 bg-primary/10 p-0.5 rounded-full" />
+                          <Check className="h-4 w-4 bg-primary/20 p-0.5 rounded-full" />
                         </div>
                       )}
                     </div>
@@ -1292,9 +1311,9 @@ export default function AppContainer() {
                       onClick={handleGPSLocation}
                       title="Usar mi ubicación GPS actual"
                       aria-label="Obtener coordenadas de mi ubicación GPS"
-                      className="bg-primary/10 hover:bg-primary/20 text-primary p-3 rounded-xl border border-primary/20 transition-all flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                      className="bg-primary/10 hover:bg-primary/20 text-primary p-3 rounded-xl border border-primary/30 transition-all flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer"
                     >
-                      <MapPin className="h-4 w-4" />
+                      <MapPin className="h-5 w-5" />
                     </button>
 
                     {/* Botón de buscar dirección con Nominatim */}
@@ -1304,31 +1323,31 @@ export default function AppContainer() {
                       disabled={isSearchingAddress}
                       title="Buscar dirección en el mapa"
                       aria-label="Buscar dirección ingresada en el mapa"
-                      className="bg-accent-purple/10 hover:bg-accent-purple/20 text-accent-purple p-3 rounded-xl border border-accent-purple/20 transition-all flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                      className="bg-primary/10 hover:bg-primary/20 text-primary p-3 rounded-xl border border-primary/30 transition-all flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer"
                     >
                       {isSearchingAddress ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <RefreshCw className="h-5 w-5 animate-spin" />
                       ) : (
-                        <RefreshCw className="h-4 w-4" />
+                        <RefreshCw className="h-5 w-5" />
                       )}
                     </button>
                   </div>
                   {locationFeedback ? (
-                    <p className="text-[10px] text-primary flex items-center gap-1 mt-0.5 font-sans">
+                    <p className="text-[10px] text-primary flex items-center gap-1 mt-0.5 font-bold">
                       <Info className="h-3 w-3" /> {locationFeedback}
                     </p>
                   ) : (
-                    <p className="text-[10px] text-gray-400 font-sans">Escribe una dirección y pulsa buscar, o haz clic en el mapa derecho.</p>
+                    <p className="text-[10px] text-gray-600 dark:text-gray-400 font-bold">Escribe una dirección y pulsa buscar, o haz clic en el mapa derecho.</p>
                   )}
                 </div>
 
                 {/* 4. Descripción (Obligatoria, mín 10 caracteres) */}
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <label htmlFor="cit-description" className="text-gray-300 font-semibold">
+                    <label htmlFor="cit-description" className="text-gray-800 dark:text-gray-300 font-bold">
                       Descripción del Problema <span className="text-primary">*</span>:
                     </label>
-                    <span className={`text-[10px] ${citDesc.trim().length >= 10 ? 'text-primary' : 'text-gray-400'}`}>
+                    <span className={`text-[10px] font-bold ${citDesc.trim().length >= 10 ? 'text-primary' : 'text-gray-500 dark:text-gray-400'}`}>
                       {citDesc.trim().length}/10 caracteres mín.
                     </span>
                   </div>
@@ -1338,25 +1357,25 @@ export default function AppContainer() {
                     onChange={(e) => setCitDesc(e.target.value)}
                     rows={3}
                     placeholder="Describe el estado de acumulación, presencia de plásticos, roedores o peligro..."
-                    className="bg-cardLight text-xs text-white p-3 rounded-xl border border-white/5 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none resize-none"
+                    className="bg-gray-50 dark:bg-cardLight text-xs text-black dark:text-white font-bold p-3 rounded-xl border border-gray-300 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none resize-none shadow-sm"
                   />
                   {citDesc.length > 0 && citDesc.trim().length < 10 && (
-                    <span className="text-[10px] text-amber-400">Por favor escribe al menos 10 caracteres para que los operadores puedan identificar la situación.</span>
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">Por favor escribe al menos 10 caracteres para que los operadores puedan identificar la situación.</span>
                   )}
                 </div>
 
                 {/* 5. Coordenadas y Confirmación de Ubicación */}
-                <div className="bg-black/30 p-4 rounded-xl border border-white/5 flex flex-wrap justify-between items-center gap-3 text-xs">
+                <div className="bg-gray-100 dark:bg-black/30 p-4 rounded-xl border border-gray-300 dark:border-white/5 flex flex-wrap justify-between items-center gap-3 text-xs shadow-sm">
                   <div>
-                    <span className="text-gray-400 block text-[10px] uppercase font-bold">Ubicación del Marcador en Mapa:</span>
-                    <span className="text-white font-mono font-semibold mt-1 block">
+                    <span className="text-gray-700 dark:text-gray-400 block text-[10px] uppercase font-bold">Ubicación del Marcador en Mapa:</span>
+                    <span className="text-black dark:text-white font-mono font-bold mt-1 block">
                       {citCoords.lat.toFixed(6)}, {citCoords.lng.toFixed(6)}
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setIsLocationConfirmed(true)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all focus-visible:ring-2 focus-visible:ring-primary flex items-center gap-1.5 ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all focus-visible:ring-2 focus-visible:ring-primary flex items-center gap-1.5 cursor-pointer ${
                       isLocationConfirmed 
                         ? 'bg-primary/20 text-primary border border-primary/30' 
                         : 'bg-primary text-white shadow-md'
@@ -1374,7 +1393,7 @@ export default function AppContainer() {
                     disabled={!isFormValid || isSubmittingReport}
                     className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
                       !isFormValid || isSubmittingReport
-                        ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-white/5'
+                        ? 'bg-gray-300 dark:bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-300 dark:border-white/5'
                         : 'bg-primary hover:bg-primary-dark text-white shadow-primary/20 cursor-pointer'
                     }`}
                   >
@@ -1385,10 +1404,10 @@ export default function AppContainer() {
                     type="button"
                     onClick={handleOfflineSubmit}
                     disabled={!isFormValid || isSubmittingReport}
-                    className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg border focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+                    className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm border focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
                       !isFormValid || isSubmittingReport
-                        ? 'bg-gray-900 text-gray-600 border-white/5 cursor-not-allowed'
-                        : 'bg-cardLight hover:bg-gray-800 text-white border-white/10 cursor-pointer'
+                        ? 'bg-gray-200 dark:bg-gray-900 text-gray-400 dark:text-gray-600 border-gray-300 dark:border-white/5 cursor-not-allowed'
+                        : 'bg-gray-100 hover:bg-gray-200 dark:bg-cardLight dark:hover:bg-gray-800 text-black dark:text-white border-gray-300 dark:border-white/10 cursor-pointer'
                     }`}
                   >
                     <Database className="h-4 w-4 text-primary" />
@@ -1398,7 +1417,7 @@ export default function AppContainer() {
 
                 {/* Mensaje de validación si faltan campos */}
                 {!isFormValid && (
-                  <p className="text-[11px] text-gray-400 mt-1">
+                  <p className="text-[11px] text-gray-700 dark:text-gray-400 mt-1 font-bold">
                     Para habilitar el envío: {!customPhoto && '• Adjunta una foto. '}{citDesc.trim().length < 10 && '• Completa la descripción (mín. 10 carac.). '}
                   </p>
                 )}
@@ -1408,16 +1427,16 @@ export default function AppContainer() {
             {/* Selector de Mapa para Citizen */}
             <div className="flex flex-col gap-4">
               <div className="glass-card p-4 rounded-2xl flex items-center justify-between text-xs">
-                <span className="text-gray-200 font-bold flex items-center gap-2">
+                <span className="text-gray-900 dark:text-gray-200 font-bold flex items-center gap-2">
                   <MapPin className="h-4.5 w-4.5 text-primary" />
                   Haz clic o arrastra el marcador para ubicar el basural
                 </span>
-                <span className="text-gray-400 font-mono text-[11px]">
+                <span className="text-gray-700 dark:text-gray-400 font-mono text-[11px] font-bold">
                   {citCoords.lat.toFixed(4)}, {citCoords.lng.toFixed(4)}
                 </span>
               </div>
 
-              <div className="rounded-2xl overflow-hidden border border-white/5 h-[480px] shadow-2xl">
+              <div className="rounded-2xl overflow-hidden border border-gray-300 dark:border-white/5 h-[480px] shadow-lg dark:shadow-2xl">
                 <MapSelector 
                   coords={citCoords} 
                   isConfirmed={isLocationConfirmed}
@@ -1438,12 +1457,12 @@ export default function AppContainer() {
             <div className="glass-card p-6 md:p-8 rounded-2xl">
               {/* Notificación de Borradores Pendientes de Sincronización */}
               {draftReports.length > 0 && (
-                <div className="mb-6 bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-200">
+                <div className="mb-6 bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-200">
                   <div className="flex items-center gap-2.5">
-                    <Database className="h-5 w-5 text-amber-400 flex-shrink-0" />
+                    <Database className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
                     <div>
-                      <strong className="text-white block font-semibold">Tienes {draftReports.length} reporte(s) guardado(s) como borrador offline</strong>
-                      <span className="text-[11px] text-amber-300">
+                      <strong className="text-gray-900 dark:text-white block font-bold">Tienes {draftReports.length} reporte(s) guardado(s) como borrador offline</strong>
+                      <span className="text-[11px] text-amber-700 dark:text-amber-300 font-bold">
                         {apiOnline 
                           ? 'El servidor central está online. Puedes sincronizarlos ahora.' 
                           : 'Están guardados en tu navegador y se sincronizarán al conectar con el servidor.'}
@@ -1464,11 +1483,11 @@ export default function AppContainer() {
 
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div>
-                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     <ClipboardList className="h-5 w-5 text-primary" />
                     {citizenReportFilter === 'mine' ? 'Mis Reportes Enviados' : 'Incidencias del Barrio'}
                   </h3>
-                  <p className="text-xs text-gray-300 mt-1">
+                  <p className="text-xs text-gray-700 dark:text-gray-300 mt-1 font-bold">
                     {citizenReportFilter === 'mine' 
                       ? 'Historial de incidencias reportadas con tu cuenta.' 
                       : 'Apoya los reportes de otros vecinos para alertar al municipio con mayor prioridad.'}
@@ -1477,19 +1496,19 @@ export default function AppContainer() {
 
                 {/* Filtro: Mis Reportes vs Todos */}
                 <div className="flex items-center gap-3">
-                  <div className="flex bg-black/30 p-1 rounded-xl border border-white/5 text-xs">
+                  <div className="flex bg-gray-200/80 dark:bg-black/30 p-1 rounded-xl border border-gray-300 dark:border-white/5 text-xs">
                     <button
                       onClick={() => setCitizenReportFilter('mine')}
-                      className={`px-4 py-2 rounded-lg font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary ${
-                        citizenReportFilter === 'mine' ? 'bg-primary text-white shadow-sm' : 'text-gray-300 hover:text-white'
+                      className={`px-4 py-2 rounded-lg font-bold transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+                        citizenReportFilter === 'mine' ? 'bg-primary text-white shadow-sm' : 'text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white'
                       }`}
                     >
                       Mis Reportes ({myReports.length})
                     </button>
                     <button
                       onClick={() => setCitizenReportFilter('all')}
-                      className={`px-4 py-2 rounded-lg font-semibold transition-all focus-visible:ring-2 focus-visible:ring-primary ${
-                        citizenReportFilter === 'all' ? 'bg-primary text-white shadow-sm' : 'text-gray-300 hover:text-white'
+                      className={`px-4 py-2 rounded-lg font-bold transition-all focus-visible:ring-2 focus-visible:ring-primary ${
+                        citizenReportFilter === 'all' ? 'bg-primary text-white shadow-sm' : 'text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white'
                       }`}
                     >
                       Reportes del Barrio ({reports.length})
@@ -1499,7 +1518,7 @@ export default function AppContainer() {
                   <button
                     onClick={loadData}
                     aria-label="Actualizar lista de reportes"
-                    className="text-xs text-gray-300 hover:text-white flex items-center gap-1.5 bg-cardLight px-3.5 py-2.5 rounded-xl border border-white/5 focus-visible:ring-2 focus-visible:ring-primary"
+                    className="text-xs text-black dark:text-gray-300 hover:text-gray-700 dark:hover:text-white flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-cardLight px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-white/5 font-bold focus-visible:ring-2 focus-visible:ring-primary cursor-pointer shadow-sm"
                   >
                     <RefreshCw className="h-3.5 w-3.5" /> Actualizar
                   </button>
@@ -1509,12 +1528,12 @@ export default function AppContainer() {
               {/* Lista Filtrada */}
               {((citizenReportFilter === 'mine' ? myReports : reports).length === 0) ? (
                 <div className="text-center py-16 flex flex-col items-center gap-4">
-                  <div className="p-4 rounded-2xl bg-cardLight/50 border border-white/5">
-                    <ClipboardList className="h-10 w-10 text-gray-400" />
+                  <div className="p-4 rounded-2xl bg-gray-100 dark:bg-cardLight/50 border border-gray-300 dark:border-white/5">
+                    <ClipboardList className="h-10 w-10 text-gray-500 dark:text-gray-400" />
                   </div>
                   <div>
-                    <p className="text-sm text-gray-200 font-semibold">No se encontraron reportes</p>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-sm text-gray-900 dark:text-gray-200 font-bold">No se encontraron reportes</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 font-bold">
                       {citizenReportFilter === 'mine' 
                         ? 'Crea tu primer reporte desde la pestaña "Nuevo Reporte".' 
                         : 'No hay reportes activos registrados por vecinos en este momento.'}
@@ -1529,23 +1548,23 @@ export default function AppContainer() {
                     const isDemo = report.isDemo || report.id.startsWith('demo_rep_') || report.description?.startsWith('[DEMO]');
 
                     return (
-                      <div key={report.id} className="bg-cardLight/50 border border-white/5 rounded-xl p-5 flex flex-col sm:flex-row gap-5 items-start hover:border-white/10 transition-all">
+                      <div key={report.id} className="bg-gray-50 dark:bg-cardLight/50 border border-gray-300 dark:border-white/5 rounded-xl p-5 flex flex-col sm:flex-row gap-5 items-start hover:border-primary/40 transition-all shadow-sm">
                         {/* Imagen */}
-                        <div className="w-24 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-black/30 border border-white/5 self-center sm:self-start">
+                        <div className="w-24 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-gray-200 dark:bg-black/30 border border-gray-300 dark:border-white/5 self-center sm:self-start">
                           <img src={getImageUrl(report.imageUrl)} alt={report.category} className="object-cover w-full h-full" />
                         </div>
 
                         {/* Info */}
                         <div className="flex-1 min-w-0 w-full">
                           <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                            <span className="text-xs font-bold text-white uppercase">{report.category}</span>
+                            <span className="text-xs font-bold text-gray-900 dark:text-white uppercase">{report.category}</span>
                             {report.isDraft && (
-                              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
                                 BORRADOR OFFLINE
                               </span>
                             )}
                             {isDemo && (
-                              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30">
                                 DEMO
                               </span>
                             )}
@@ -1553,26 +1572,26 @@ export default function AppContainer() {
                               {report.status.replace('_', ' ')}
                             </span>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
-                              report.priority === 'CRITICA' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                              report.priority === 'ALTA' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
-                              'bg-gray-500/10 text-gray-300 border-gray-500/20'
+                              report.priority === 'CRITICA' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' :
+                              report.priority === 'ALTA' ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20' :
+                              'bg-gray-500/10 text-gray-700 dark:text-gray-300 border-gray-500/20'
                             }`}>
                               {report.priority}
                             </span>
                             
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
-                              <Flame className="h-3 w-3 fill-amber-400" />
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                              <Flame className="h-3 w-3 fill-amber-500" />
                               {report.upvotes || 0} apoyos
                             </span>
                           </div>
-                          <p className="text-xs text-gray-300 mb-2">{report.description}</p>
-                          <div className="flex items-center gap-4 text-[10px] text-gray-400 font-sans">
+                          <p className="text-xs text-gray-800 dark:text-gray-300 mb-2 font-bold">{report.description}</p>
+                          <div className="flex items-center gap-4 text-[10px] text-gray-600 dark:text-gray-400 font-bold">
                             <span className="flex items-center gap-1">
                               <MapPin className="h-3 w-3 text-primary" />
                               {report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}
                             </span>
                             <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3 text-gray-400" />
+                              <Clock className="h-3 w-3 text-gray-500 dark:text-gray-400" />
                               {new Date(report.createdAt).toLocaleString()}
                             </span>
                           </div>
@@ -1588,11 +1607,11 @@ export default function AppContainer() {
                             disabled={alreadySupported}
                             className={`w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border uppercase focus-visible:ring-2 focus-visible:ring-primary ${
                               alreadySupported 
-                                ? 'bg-green-500/10 text-green-400 border-green-500/20 cursor-default' 
+                                ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20 cursor-default' 
                                 : 'bg-primary hover:bg-primary-dark text-white border-primary/20 shadow-lg shadow-primary/10 cursor-pointer'
                             }`}
                           >
-                            <Flame className={`h-4.5 w-4.5 ${alreadySupported ? 'fill-green-400' : ''}`} />
+                            <Flame className={`h-4.5 w-4.5 ${alreadySupported ? 'fill-green-600 dark:fill-green-400' : ''}`} />
                             <span>{alreadySupported ? 'Apoyado' : 'Apoyar'}</span>
                           </button>
                         )}
@@ -1600,7 +1619,7 @@ export default function AppContainer() {
                         {isOwnReport && (
                           <button
                             onClick={() => handleDeleteReport(report.id)}
-                            className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-red-500/20 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white uppercase cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
+                            className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-red-500/20 bg-red-500/10 hover:bg-red-500 text-red-600 hover:text-white uppercase cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
                           >
                             <Trash2 className="h-4.5 w-4.5" />
                             <span>Eliminar</span>
@@ -1621,71 +1640,80 @@ export default function AppContainer() {
 
   // VISTA 3: OPERATOR DASHBOARD (Si es operador municipal)
   return (
-    <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans relative overflow-hidden">
+    <div className="min-h-screen bg-background text-black dark:text-gray-100 flex flex-col font-sans relative overflow-hidden">
       {/* Luces de fondo animadas */}
       <div className="absolute top-[-10%] left-[-10%] w-[550px] h-[550px] bg-primary/4 rounded-full blur-[130px] pointer-events-none animate-float-1"></div>
       <div className="absolute bottom-[10%] right-[-5%] w-[500px] h-[500px] bg-accent-purple/4 rounded-full blur-[110px] pointer-events-none animate-float-2"></div>
       
       {/* Navbar Superior */}
-      <header className="w-full glass-panel sticky top-0 z-40 border-b border-white/5 py-4 px-6 md:px-12 flex flex-wrap justify-between items-center gap-4">
+      <header className="w-full glass-panel sticky top-0 z-40 border-b border-gray-200 dark:border-white/5 py-4 px-6 md:px-12 flex flex-wrap justify-between items-center gap-4">
         <div className="flex items-center gap-3">
-          <div className="relative w-11 h-11 rounded-xl overflow-hidden border border-white/10 shadow-lg glow-green flex items-center justify-center bg-black/20">
+          <div className="relative w-11 h-11 rounded-xl overflow-hidden border border-gray-200 dark:border-white/10 shadow-lg glow-green flex items-center justify-center bg-gray-100 dark:bg-black/20">
             <img src="/logo.png" alt="EcoTuc Logo" className="object-cover w-full h-full" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-black dark:text-white flex items-center gap-2">
               EcoTuc 
-              <span className="text-xs font-normal text-primary px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20">
+              <span className="text-xs font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20">
                 Municipal v1.0
               </span>
             </h1>
-            <p className="text-xs text-gray-300">Plataforma Inteligente de Gestión Ambiental - Tucumán</p>
+            <p className="text-xs text-gray-700 dark:text-gray-300 font-bold">Plataforma Inteligente de Gestión Ambiental - Tucumán</p>
           </div>
         </div>
 
         {/* Estado del Servidor Backend y Herramientas Demo */}
         <div className="flex flex-wrap items-center gap-3 md:gap-6">
           {/* Indicador transparente de Persistencia */}
-          <div className="flex items-center gap-1.5 text-xs bg-cardLight/50 px-3 py-1.5 rounded-full border border-white/5" title={apiOnline ? 'Conectado a PostgreSQL' : 'Persistencia local en este navegador'}>
-            <span className={`h-2 w-2 rounded-full ${apiOnline ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
-            <span className="text-gray-300 text-[11px]">
+          <div className="flex items-center gap-1.5 text-xs bg-gray-100 dark:bg-cardLight/50 px-3 py-1.5 rounded-full border border-gray-300 dark:border-white/5" title={apiOnline ? 'Conectado a PostgreSQL' : 'Persistencia local en este navegador'}>
+            <span className={`h-2 w-2 rounded-full ${apiOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></span>
+            <span className="text-gray-800 dark:text-gray-300 text-[11px] font-bold">
               {apiOnline ? 'Servidor Central (PostgreSQL)' : 'Modo Local (Navegador)'}
             </span>
           </div>
 
           {/* Menú de Datos de Demostración */}
-          <div className="flex items-center gap-1.5 bg-black/30 p-1 rounded-xl border border-white/5 text-xs">
+          <div className="flex items-center gap-1.5 bg-gray-200/80 dark:bg-black/30 p-1 rounded-xl border border-gray-300 dark:border-white/5 text-xs">
             <button
               onClick={handleLoadDemo}
               title="Cargar incidencias ficticias en Tucumán para probar el flujo"
-              className="px-2.5 py-1 text-[11px] font-semibold text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary"
+              className="px-2.5 py-1 text-[11px] font-bold text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-white bg-purple-500/10 hover:bg-purple-500/20 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
             >
               + Cargar Demo
             </button>
             <button
               onClick={handleClearDemo}
               title="Limpiar únicamente las incidencias de prueba"
-              className="px-2.5 py-1 text-[11px] font-semibold text-gray-300 hover:text-white bg-cardLight hover:bg-gray-800 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary"
+              className="px-2.5 py-1 text-[11px] font-bold text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white bg-gray-100 hover:bg-gray-200 dark:bg-cardLight dark:hover:bg-gray-800 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
             >
               Limpiar Demo
             </button>
             <button
               onClick={handleResetDB}
               title="Reiniciar base de datos limpia sin reportes"
-              className="px-2.5 py-1 text-[11px] font-semibold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary"
+              className="px-2.5 py-1 text-[11px] font-bold text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
             >
               Reiniciar DB
             </button>
           </div>
 
+          {/* Botón de Generación de Informe Ejecutivo Oficial */}
+          <button
+            onClick={() => setShowExecutiveReport(true)}
+            title="Generar y Descargar Informe Ejecutivo Oficial para la Intendencia"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#154726] hover:bg-[#0e331a] text-white border border-[#5cb836]/40 shadow-sm transition-all cursor-pointer"
+          >
+            <span>📄 Informe Ejecutivo (PDF)</span>
+          </button>
+
           <div className="hidden lg:flex flex-col items-end text-xs">
-            <span className="text-white font-bold">{user.fullName}</span>
-            <span className="text-gray-400">Rol: {user.role}</span>
+            <span className="text-black dark:text-white font-bold">{user.fullName}</span>
+            <span className="text-gray-600 dark:text-gray-400 font-bold">Rol: {user.role}</span>
           </div>
 
           <button 
             onClick={() => setUser(null)}
-            className="text-red-400 hover:text-red-300 flex items-center gap-1 text-xs bg-red-500/10 py-1.5 px-3 rounded-lg border border-red-500/20 focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+            className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 flex items-center gap-1 text-xs bg-red-500/10 hover:bg-red-500/20 py-1.5 px-3 rounded-lg border border-red-500/20 focus-visible:ring-2 focus-visible:ring-primary cursor-pointer font-bold"
             aria-label="Cerrar sesión de operador"
           >
             <LogOut className="h-3.5 w-3.5" /> Salir
@@ -2164,6 +2192,24 @@ export default function AppContainer() {
           );
         })}
       </div>
+
+      {/* Modal de Informe Ejecutivo Oficial */}
+      {showExecutiveReport && (
+        <ExecutiveReportModal
+          reports={reports}
+          crews={crews}
+          stats={stats}
+          onClose={() => setShowExecutiveReport(false)}
+        />
+      )}
+
+      {/* Modal Antes y Después */}
+      {selectedBeforeAfter && (
+        <BeforeAfterModal
+          report={selectedBeforeAfter}
+          onClose={() => setSelectedBeforeAfter(null)}
+        />
+      )}
     </div>
   );
 }

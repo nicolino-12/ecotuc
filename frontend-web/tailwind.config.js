@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -8,12 +9,23 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        background: "#0b0f19",
-        card: "#151b2c",
-        cardLight: "#1e263d",
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+        card: "var(--card)",
+        cardLight: "var(--card-light)",
+        cardBorder: "var(--card-border)",
+        textMuted: "var(--text-muted)",
+        brandDark: "#154726",
+        brandLight: "#5cb836",
         primary: {
-          DEFAULT: "#10b981", // Emerald Green
-          dark: "#059669",
+          DEFAULT: "#154726", // Verde Oscuro EcoTuc
+          dark: "#0e331a",
+          light: "#5cb836",   // Verde Claro EcoTuc
+        },
+        secondary: {
+          DEFAULT: "#5cb836", // Verde Claro EcoTuc
+          dark: "#489828",
+          light: "#82d45c",
         },
         accent: {
           purple: "#8b5cf6",
@@ -23,11 +35,11 @@ module.exports = {
           critica: "#ef4444", // Red
           alta: "#f97316",    // Orange
           media: "#f59e0b",   // Amber
-          baja: "#10b981",    // Green
+          baja: "#5cb836",    // Green
         }
       },
       fontFamily: {
-        sans: ["var(--font-sans)", "Inter", "sans-serif"],
+        sans: ["Arial", "Helvetica", "sans-serif"],
       },
     },
   },

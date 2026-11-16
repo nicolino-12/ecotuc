@@ -3,32 +3,124 @@
 @tailwind utilities;
 
 :root {
-  --background: #0b0f19;
-  --foreground: #f3f4f6;
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-light: #f3f4f6;
+  --card-border: #000000;
+  --text-muted: #1f2937;
 }
 
+.dark {
+  --background: #090d16;
+  --foreground: #f8fafc;
+  --card: #121826;
+  --card-light: #1a2234;
+  --card-border: rgba(255, 255, 255, 0.15);
+  --text-muted: #cbd5e1;
+}
+
+/* Regla Universal de Tipografía: Arial Negrita */
+*, *::before, *::after {
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif !important;
+  font-weight: 700 !important;
+}
+
+/* Regla Universal de Contraste Automático para Temas:
+   - En tema claro (sin clase .dark): letras oscuras/negras (#000000 o tonos oscuros) para máxima legibilidad.
+   - En tema oscuro (.dark): letras claras/blancas (#f8fafc) para que resalten perfectamente. */
 body {
-  color: var(--foreground);
+  color: #000000;
   background: var(--background);
-  font-family: var(--font-sans), sans-serif;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif !important;
+  font-weight: 700 !important;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+html.dark body,
+.dark body {
+  color: #f8fafc;
+}
+
+/* Forzar contraste en etiquetas de texto generales cuando no tengan color explícito */
+h1, h2, h3, h4, h5, h6, p, span, label, td, th {
+  color: inherit;
+}
+
+:not(.dark) h1:not([class*="text-primary"]):not([class*="text-white"]):not([class*="text-red-"]):not([class*="text-green-"]):not([class*="text-amber-"]):not([class*="text-purple-"]),
+:not(.dark) h2:not([class*="text-primary"]):not([class*="text-white"]):not([class*="text-red-"]):not([class*="text-green-"]):not([class*="text-amber-"]):not([class*="text-purple-"]),
+:not(.dark) h3:not([class*="text-primary"]):not([class*="text-white"]):not([class*="text-red-"]):not([class*="text-green-"]):not([class*="text-amber-"]):not([class*="text-purple-"]),
+:not(.dark) p:not([class*="text-primary"]):not([class*="text-white"]):not([class*="text-red-"]):not([class*="text-green-"]):not([class*="text-amber-"]):not([class*="text-purple-"]):not([class*="text-emerald-"]),
+:not(.dark) label:not([class*="text-primary"]):not([class*="text-white"]):not([class*="text-red-"]):not([class*="text-green-"]):not([class*="text-amber-"]) {
+  color: #111827;
+}
+
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4,
+.dark h5,
+.dark h6 {
+  color: #f8fafc;
+}
+
+/* Textos en Modo Claro con Alto Contraste */
+:not(.dark) input,
+:not(.dark) select,
+:not(.dark) textarea {
+  color: #000000 !important;
+  background-color: #ffffff;
+  font-weight: 700 !important;
+}
+
+:not(.dark) input::placeholder,
+:not(.dark) textarea::placeholder {
+  color: #4b5563 !important;
+  font-weight: 600 !important;
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  color: #ffffff !important;
+  background-color: var(--card-light);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #94a3b8 !important;
 }
 
 /* Glassmorphism custom styling */
 .glass-panel {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--card);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06);
+}
+
+.dark .glass-panel {
+  background: rgba(18, 24, 38, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
 }
 
 .glass-card {
-  background: rgba(21, 27, 44, 0.7);
+  background: var(--card);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   transition: all 0.2s ease-in-out;
 }
 
+.dark .glass-card {
+  background: rgba(21, 27, 44, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
 .glass-card:hover {
-  border-color: rgba(16, 185, 129, 0.3);
+  border-color: #5cb836;
 }
 
 /* Custom Scrollbars */
@@ -37,54 +129,67 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0b0f19;
+  background: var(--background);
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f293d;
+  background: #9ca3af;
   border-radius: 4px;
 }
+.dark ::-webkit-scrollbar-thumb {
+  background: #1f293d;
+}
 ::-webkit-scrollbar-thumb:hover {
-  background: #10b981;
+  background: #5cb836;
 }
 
-/* Leaflet Dark-Mode Styling adjustments */
+/* Leaflet Styling adjustments */
 .leaflet-container {
-  background: #0b0f19 !important;
-  font-family: var(--font-sans) !important;
+  background: var(--background) !important;
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-weight: 700 !important;
 }
 
-/* Estilo oscuro para teselas de OpenStreetMap libres de API key */
-.dark-map-tiles .leaflet-tile {
-  filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+.dark .dark-map-tiles .leaflet-tile {
+  filter: brightness(0.65) invert(1) contrast(2.8) hue-rotate(200deg) saturate(0.3) brightness(0.75);
 }
 
 .leaflet-popup-content-wrapper, .leaflet-popup-tip {
-  background: #151b2c !important;
-  color: #f3f4f6 !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: var(--card) !important;
+  color: #000000 !important;
+  border: 2px solid #154726 !important;
   border-radius: 12px !important;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3) !important;
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-weight: 700 !important;
+}
+
+.dark .leaflet-popup-content-wrapper, .dark .leaflet-popup-tip {
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
 
 .leaflet-popup-close-button {
-  color: #d1d5db !important;
+  color: #000000 !important;
   top: 8px !important;
   right: 8px !important;
 }
+.dark .leaflet-popup-close-button {
+  color: #ffffff !important;
+}
 
-/* Accesibilidad: Foco visible universal para navegación por teclado */
+/* Accesibilidad: Foco visible universal */
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 a:focus-visible {
-  outline: 2px solid #10b981 !important;
+  outline: 3px solid #5cb836 !important;
   outline-offset: 2px !important;
 }
 
 /* Glow effects */
 .glow-green {
-  box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 18px rgba(92, 184, 54, 0.45);
 }
 .glow-red {
   box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
@@ -96,36 +201,21 @@ a:focus-visible {
   box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
 }
 
-/* Mesh Gradient / Background floating lights animation */
-@keyframes float-light-1 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(30px, -50px) scale(1.1); }
-  66% { transform: translate(-20px, 20px) scale(0.95); }
-}
-
-@keyframes float-light-2 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-40px, 40px) scale(1.05); }
-}
-
-.animate-float-1 {
-  animation: float-light-1 25s ease-in-out infinite;
-}
-
-.animate-float-2 {
-  animation: float-light-2 20s ease-in-out infinite;
-}
-
-/* Premium card active states and glow */
-.glass-card-premium {
-  background: rgba(25, 32, 53, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.glass-card-premium:hover {
-  border-color: rgba(16, 185, 129, 0.4);
-  box-shadow: 0 20px 40px -15px rgba(16, 185, 129, 0.2), 0 0 15px rgba(16, 185, 129, 0.1);
-  transform: translateY(-4px);
+/* Estilos de Impresión para Informe Ejecutivo */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  header, nav, .no-print, button, .leaflet-control {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .print-page {
+    page-break-after: always;
+    box-shadow: none !important;
+    border: none !important;
+  }
 }

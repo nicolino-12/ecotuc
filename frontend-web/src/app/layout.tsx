@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Header from '../components/Header';
+import { ToastProvider } from '../context/ToastContext';
 
 export const metadata: Metadata = {
   title: 'EcoTuc - Panel de Gestión de Micro-basurales',
@@ -44,8 +45,10 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <Header />
-        {children}
+        <ToastProvider>
+          <Header />
+          {children}
+        </ToastProvider>
         
         {/* Registro del Service Worker */}
         <script

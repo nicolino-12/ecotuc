@@ -6,8 +6,10 @@ import {
   Trash2, AlertTriangle, Users, CheckCircle, Clock, MapPin, 
   ListFilter, ShieldAlert, PlusCircle, Smartphone, Map as MapIcon, 
   ClipboardList, LogOut, Send, Camera, User, Lock, Mail, Check, HelpCircle, Info,
-  Database, RefreshCw, Eye, Phone, Home, Flame, BarChart3, AlertCircle, ArrowRight
+  Database, RefreshCw, Eye, Phone, Home, Flame, BarChart3, AlertCircle, ArrowRight,
+  Wrench, ChevronDown
 } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 import { io } from 'socket.io-client';
 import AnalyticsDashboard from '../components/AnalyticsDashboard';
 
@@ -37,7 +39,6 @@ import ReportsTable from '../components/ReportsTable';
 import MockMobileSimulator from '../components/MockMobileSimulator';
 import AIWasteScanner from '../components/AIWasteScanner';
 import ExecutiveReportModal from '../components/ExecutiveReportModal';
-import BeforeAfterModal from '../components/BeforeAfterModal';
 
 export default function AppContainer() {
   // Estado de sesión
@@ -102,7 +103,8 @@ export default function AppContainer() {
 
   // Modales de mejoras de alto impacto
   const [showExecutiveReport, setShowExecutiveReport] = useState(false);
-  const [selectedBeforeAfter, setSelectedBeforeAfter] = useState<any | null>(null);
+  const [showDevToolsMenu, setShowDevToolsMenu] = useState(false);
+  const { toast } = useToast();
 
   const categoryDistribution = useMemo(() => {
     const counts: Record<string, number> = {
@@ -693,6 +695,7 @@ export default function AppContainer() {
         setLocationInput('');
         setLocationFeedback('');
         setIsSubmittingReport(false);
+        toast({ type: 'success', title: '¡Reporte Registrado!', description: 'La incidencia se guardó correctamente.' });
       }, 500);
     }
   };
@@ -751,6 +754,7 @@ export default function AppContainer() {
       setLocationInput('');
       setLocationFeedback('');
       setIsSubmittingReport(false);
+      toast({ type: 'info', title: 'Borrador Guardado', description: 'Se almacenó en tu dispositivo para sincronizar cuando haya conexión.' });
     }, 500);
   };
 
@@ -1249,9 +1253,13 @@ export default function AppContainer() {
                     {customPhoto && (
                       <AIWasteScanner
                         photoUrl={customPhoto}
-                        onApplyAnalysis={(analysis) => {
-                          setCitCategory(analysis.category);
-                          setCitDesc(analysis.description);
+                        currentCategory={citCategory}
+                        currentDescription={citDesc}
+                        onApplyCategory={(category) => setCitCategory(category)}
+                        onApplyDescription={(description) => setCitDesc(description)}
+                        onRetakePhoto={() => {
+                          setCustomPhoto(null);
+                          setCustomFile(null);
                         }}
                       />
                     )}
@@ -1672,29 +1680,57 @@ export default function AppContainer() {
             </span>
           </div>
 
-          {/* Menú de Datos de Demostración */}
-          <div className="flex items-center gap-1.5 bg-gray-200/80 dark:bg-black/30 p-1 rounded-xl border border-gray-300 dark:border-white/5 text-xs">
+          {/* Menú Desplegable Profesional de Herramientas de Prueba / Demo */}
+          <div className="relative">
             <button
-              onClick={handleLoadDemo}
-              title="Cargar incidencias ficticias en Tucumán para probar el flujo"
-              className="px-2.5 py-1 text-[11px] font-bold text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-white bg-purple-500/10 hover:bg-purple-500/20 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
+              onClick={() => setShowDevToolsMenu(!showDevToolsMenu)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white bg-gray-100 hover:bg-gray-200 dark:bg-cardLight dark:hover:bg-gray-800 rounded-xl border border-gray-300 dark:border-white/10 transition-all cursor-pointer shadow-sm"
+              title="Herramientas de demostración y testing"
             >
-              + Cargar Demo
+              <Wrench className="h-3.5 w-3.5 text-primary" />
+              <span>Herramientas Demo</span>
+              <ChevronDown className="h-3 w-3 opacity-70" />
             </button>
-            <button
-              onClick={handleClearDemo}
-              title="Limpiar únicamente las incidencias de prueba"
-              className="px-2.5 py-1 text-[11px] font-bold text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white bg-gray-100 hover:bg-gray-200 dark:bg-cardLight dark:hover:bg-gray-800 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
-            >
-              Limpiar Demo
-            </button>
-            <button
-              onClick={handleResetDB}
-              title="Reiniciar base de datos limpia sin reportes"
-              className="px-2.5 py-1 text-[11px] font-bold text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-all focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
-            >
-              Reiniciar DB
-            </button>
+
+            {showDevToolsMenu && (
+              <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-[#121826] border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl p-2 z-50 flex flex-col gap-1 text-xs animate-in fade-in slide-in-from-top-2 duration-200">
+                <span className="text-[10px] uppercase font-bold text-gray-400 px-2 py-1">Ambiente de Prueba</span>
+                <button
+                  onClick={() => {
+                    handleLoadDemo();
+                    setShowDevToolsMenu(false);
+                    toast({ type: 'success', title: 'Datos Demo Cargados', description: 'Se inyectaron incidencias simuladas en Tucumán.' });
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors flex items-center gap-2"
+                >
+                  <PlusCircle className="h-3.5 w-3.5" />
+                  + Cargar Incidencias Demo
+                </button>
+                <button
+                  onClick={() => {
+                    handleClearDemo();
+                    setShowDevToolsMenu(false);
+                    toast({ type: 'info', title: 'Demo Limpiado', description: 'Se retiraron los reportes de prueba.' });
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex items-center gap-2"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Limpiar Datos Demo
+                </button>
+                <div className="border-t border-gray-100 dark:border-white/5 my-0.5"></div>
+                <button
+                  onClick={() => {
+                    handleResetDB();
+                    setShowDevToolsMenu(false);
+                    toast({ type: 'warning', title: 'Base Reiniciada', description: 'La memoria local ha vuelto al estado inicial.' });
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors flex items-center gap-2"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Reiniciar Base Completa
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Botón de Generación de Informe Ejecutivo Oficial */}
@@ -1936,76 +1972,123 @@ export default function AppContainer() {
               </div>
               <div className="lg:col-span-1">
                 {selectedReport ? (
-                  <div className="glass-card p-6 rounded-2xl flex flex-col gap-5 border border-white/10 sticky top-24">
-                    <div className="flex justify-between items-start">
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full uppercase ${
-                        selectedReport.priority === 'CRITICA' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                        selectedReport.priority === 'ALTA' ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20' :
-                        selectedReport.priority === 'MEDIA' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                        'bg-primary/10 text-primary border border-primary/20'
-                      }`}>
-                        Prioridad {selectedReport.priority}
-                      </span>
+                  <div className="glass-card p-5 md:p-6 rounded-2xl flex flex-col gap-4 border border-gray-300 dark:border-white/10 sticky top-24 shadow-xl">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full uppercase border ${
+                          selectedReport.priority === 'CRITICA' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30' :
+                          selectedReport.priority === 'ALTA' ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30' :
+                          selectedReport.priority === 'MEDIA' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' :
+                          'bg-primary/10 text-primary border-primary/30'
+                        }`}>
+                          Prioridad {selectedReport.priority || 'NORMAL'}
+                        </span>
+                        {(selectedReport.isDemo || selectedReport.id.startsWith('demo_rep_') || selectedReport.description?.startsWith('[DEMO]')) && (
+                          <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30">
+                            DEMO
+                          </span>
+                        )}
+                      </div>
                       <button 
                         onClick={() => setSelectedReport(null)}
-                        className="text-gray-400 hover:text-white text-xs p-1"
-                        aria-label="Cerrar detalle"
+                        className="text-gray-500 hover:text-black dark:text-gray-400 dark:hover:text-white p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+                        aria-label="Cerrar panel de detalle de reporte"
                       >
                         ✕
                       </button>
                     </div>
 
-                    <div className="rounded-xl overflow-hidden h-40 relative bg-black/30 border border-white/5">
-                      <img 
-                        src={getImageUrl(selectedReport.imageUrl)} 
-                        alt={selectedReport.category} 
-                        className="object-cover w-full h-full"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=600&auto=format&fit=crop';
-                        }}
-                      />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <h3 className="text-lg font-bold text-white">{selectedReport.category}</h3>
-                        {(selectedReport.isDemo || selectedReport.id.startsWith('demo_rep_') || selectedReport.description?.startsWith('[DEMO]')) && (
-                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                            DEMO
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">Reportado el: {new Date(selectedReport.createdAt).toLocaleString()}</p>
-                      {selectedReport.citizenName && (
-                        <p className="text-xs text-gray-400 mt-0.5">Por: <span className="text-white font-semibold">{selectedReport.citizenName}</span></p>
-                      )}
-                      <p className="text-sm text-gray-300 mt-3">{selectedReport.description || 'Sin descripción detallada.'}</p>
-                    </div>
-
-                    <div className="border-t border-white/5 pt-4 flex flex-col gap-3">
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-400">Estado:</span>
-                        <span className="font-semibold text-white uppercase">{selectedReport.status}</span>
-                      </div>
-                      <div className="flex flex-col gap-1.5 pt-1">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-gray-400 font-semibold uppercase tracking-wider text-[10px]">Score de Prioridad:</span>
-                          <span className="font-bold text-white text-sm">{selectedReport.priorityScore?.toFixed(1) || '0.0'} / 100</span>
+                    {/* Foto disponible con fallback claro */}
+                    <div className="rounded-xl overflow-hidden h-44 relative bg-gray-100 dark:bg-black/40 border border-gray-200 dark:border-white/10 flex items-center justify-center">
+                      {selectedReport.imageUrl ? (
+                        <img 
+                          src={getImageUrl(selectedReport.imageUrl)} 
+                          alt={selectedReport.category} 
+                          className="object-cover w-full h-full"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=600&auto=format&fit=crop';
+                          }}
+                        />
+                      ) : (
+                        <div className="text-center p-4 text-xs text-gray-500 font-bold">
+                          Sin fotografía adjunta registrada
                         </div>
-                        <div className="h-2 w-full bg-black/40 rounded-full overflow-hidden border border-white/5 p-[1px]">
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-base font-bold text-gray-900 dark:text-white">{selectedReport.category}</h3>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${statusBadge(selectedReport.status)}`}>
+                          {selectedReport.status ? selectedReport.status.replace('_', ' ') : 'DESCONOCIDO'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-600 dark:text-gray-400 font-bold">
+                        Reportado el: {selectedReport.createdAt ? new Date(selectedReport.createdAt).toLocaleString() : 'Fecha no especificada'}
+                      </p>
+                      {selectedReport.citizenName ? (
+                        <p className="text-[11px] text-gray-600 dark:text-gray-400 font-bold">
+                          Informado por: <span className="text-gray-900 dark:text-white font-bold">{selectedReport.citizenName}</span>
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-gray-500 italic font-bold">Vecino anónimo de Tucumán</p>
+                      )}
+                    </div>
+
+                    {/* Descripción con texto explicativo si está vacío */}
+                    <div className="p-3 bg-gray-50 dark:bg-black/20 rounded-xl border border-gray-200 dark:border-white/5">
+                      <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 block mb-1">
+                        Descripción del Incidente:
+                      </span>
+                      <p className="text-xs text-gray-800 dark:text-gray-200 font-bold leading-relaxed">
+                        {selectedReport.description && selectedReport.description.trim().length > 0 
+                          ? selectedReport.description 
+                          : 'No se ingresó una descripción textual adicional para este foco.'}
+                      </p>
+                    </div>
+
+                    {/* Cuadrilla asignada */}
+                    <div className="p-3 bg-gray-50 dark:bg-black/20 rounded-xl border border-gray-200 dark:border-white/5 text-xs flex justify-between items-center">
+                      <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400">
+                        Cuadrilla Asignada:
+                      </span>
+                      <span className="font-bold text-gray-900 dark:text-white">
+                        {selectedReport.crewId 
+                          ? (crews.find((c: any) => c.id === selectedReport.crewId)?.name || 'Cuadrilla Asignada')
+                          : <span className="text-amber-600 dark:text-amber-400 italic">Pendiente de asignación</span>}
+                      </span>
+                    </div>
+
+                    <div className="border-t border-gray-200 dark:border-white/10 pt-3 flex flex-col gap-2">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider text-[10px]">
+                            Índice de Prioridad:
+                          </span>
+                          <span className="font-bold text-gray-900 dark:text-white text-xs">
+                            {selectedReport.priorityScore ? selectedReport.priorityScore.toFixed(1) : '0.0'} / 100
+                          </span>
+                        </div>
+                        <div className="h-2 w-full bg-gray-200 dark:bg-black/40 rounded-full overflow-hidden border border-gray-300 dark:border-white/5">
                           <div 
                             className={`h-full rounded-full transition-all duration-500 ${
-                              selectedReport.priorityScore >= 85 ? 'bg-gradient-to-r from-orange-500 to-red-500 glow-red' :
-                              selectedReport.priorityScore >= 65 ? 'bg-gradient-to-r from-amber-500 to-orange-500 glow-orange' :
-                              'bg-gradient-to-r from-green-500 to-amber-500 glow-green'
+                              (selectedReport.priorityScore || 0) >= 80 ? 'bg-red-500' :
+                              (selectedReport.priorityScore || 0) >= 60 ? 'bg-orange-500' :
+                              'bg-primary'
                             }`}
-                            style={{ width: `${selectedReport.priorityScore || 0}%` }}
+                            style={{ width: `${Math.min(100, selectedReport.priorityScore || 10)}%` }}
                           ></div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 text-xs text-gray-400">
-                        <MapPin className="h-3.5 w-3.5 text-primary" />
-                        <span className="font-mono">{selectedReport.latitude.toFixed(6)}, {selectedReport.longitude.toFixed(6)}</span>
+                      
+                      <div className="flex items-center justify-between text-[11px] text-gray-600 dark:text-gray-400 font-bold pt-1">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-primary" />
+                          Coordenadas GPS:
+                        </span>
+                        <span className="font-mono text-gray-900 dark:text-white font-bold">
+                          {selectedReport.latitude ? selectedReport.latitude.toFixed(5) : '0.00000'}, {selectedReport.longitude ? selectedReport.longitude.toFixed(5) : '0.00000'}
+                        </span>
                       </div>
                     </div>
 
@@ -2014,9 +2097,9 @@ export default function AppContainer() {
                         onClick={() => {
                           setActiveTab('crews');
                         }}
-                        className="w-full bg-primary hover:bg-primary-dark text-white font-semibold py-2.5 rounded-xl transition-all shadow-md shadow-primary/20 mt-2 focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                        className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-2.5 rounded-xl transition-all shadow-md shadow-primary/20 text-xs focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
                       >
-                        Asignar Cuadrilla
+                        Asignar Cuadrilla a este Foco
                       </button>
                     )}
                   </div>
@@ -2200,14 +2283,6 @@ export default function AppContainer() {
           crews={crews}
           stats={stats}
           onClose={() => setShowExecutiveReport(false)}
-        />
-      )}
-
-      {/* Modal Antes y Después */}
-      {selectedBeforeAfter && (
-        <BeforeAfterModal
-          report={selectedBeforeAfter}
-          onClose={() => setSelectedBeforeAfter(null)}
         />
       )}
     </div>

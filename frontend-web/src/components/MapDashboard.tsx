@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { ListFilter, MapPin, Eye, AlertTriangle, Layers, Info, Flame, Navigation, CheckCircle2, RotateCcw } from 'lucide-react';
-import BeforeAfterModal from './BeforeAfterModal';
 
 interface MapDashboardProps {
   reports: any[];
@@ -37,9 +36,6 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
   // Ruta Óptima de Recolección (TSP) calculada
   const [tspActive, setTspActive] = useState<boolean>(false);
   const [tspMetrics, setTspMetrics] = useState<{ totalKm: number; timeMin: number; fuelSaved: number; stopsCount: number } | null>(null);
-
-  // Modal Antes y Después para reportes resueltos
-  const [beforeAfterReport, setBeforeAfterReport] = useState<any | null>(null);
 
   // Posiciones simuladas de los camiones
   const [simulatedPositions, setSimulatedPositions] = useState<Record<string, { lat: number; lng: number; targetIdx: number; progress: number }>>({});
@@ -471,18 +467,6 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
                           {rep.upvotes ? <span>🔥 {rep.upvotes} votos</span> : null}
                         </div>
 
-                        {/* Botón Antes y Después si está RESUELTO */}
-                        {isResolved && (
-                          <button
-                            type="button"
-                            onClick={() => setBeforeAfterReport(rep)}
-                            className="w-full bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700/50 text-[10px] font-bold py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5 text-[#5cb836]" />
-                            Ver Antes y Después
-                          </button>
-                        )}
-
                         <button 
                           onClick={() => onSelectReport(rep)}
                           className="w-full bg-gray-100 hover:bg-gray-200 dark:bg-cardLight dark:hover:bg-gray-800 text-[10px] text-gray-900 dark:text-white font-semibold py-1.5 rounded flex items-center justify-center gap-1 border border-gray-200 dark:border-white/5 transition-all cursor-pointer"
@@ -537,14 +521,6 @@ export default function MapDashboard({ reports, crews, onSelectReport, selectedR
           </div>
         )}
       </div>
-
-      {/* Modal Antes y Después */}
-      {beforeAfterReport && (
-        <BeforeAfterModal
-          report={beforeAfterReport}
-          onClose={() => setBeforeAfterReport(null)}
-        />
-      )}
     </div>
   );
 }

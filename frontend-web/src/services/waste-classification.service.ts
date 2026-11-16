@@ -22,6 +22,77 @@ export class WasteClassificationService {
    * 3. Nunca envía ni clasifica sin confirmación humana previa.
    */
   public static async analyzeImage(photoUrl: string): Promise<ClassificationResult> {
+    // Simulación más realista de inferencia: usamos heurísticas simples basadas en la URL
+    // para devolver diferentes categorías y niveles de confianza.
+    // En un proyecto real se reemplazaría por un modelo TensorFlow.js o una llamada a API.
+    await new Promise((resolve) => setTimeout(resolve, 850));
+
+    // Verificación básica de integridad de la imagen
+    if (!photoUrl || (photoUrl.length < 500 && !photoUrl.startsWith('data:image'))) {
+      return {
+        status: 'LOW_QUALITY',
+        suggestedCategory: null,
+        confidenceScore: 0.25,
+        confidenceLevel: 'BAJA',
+        isHazardousSuspect: false,
+        requiresHumanReview: true,
+        qualityIssue: 'BLURRY',
+        qualityDescription: 'La resolución de la captura es insuficiente o está fuera de foco para un diagnóstico automatizado.',
+        suggestedDescription: '',
+        detectedElements: ['Baja nitidez', 'Patrón difuso'],
+        explanation: 'La IA no puede asegurar el tipo de residuo con la precisión requerida. Puedes seleccionar la categoría manualmente o tomar una fotografía más nítida.',
+      };
+    }
+
+    // Heurística de muestra: buscar palabras clave en la URL para decidir categoría
+    const lowerUrl = photoUrl.toLowerCase();
+    let category: ValidCategoryType = 'OTROS';
+    let description = '';
+    let confidence = 0.78;
+    let confidenceLevel: ClassificationResult['confidenceLevel'] = 'ALTA';
+    const elements: string[] = [];
+
+    if (lowerUrl.includes('plastic') || lowerUrl.includes('botellas')) {
+      category = 'BASURAL';
+      description = 'Acumulación de residuos plásticos y bolsas en la vía pública.';
+      elements.push('Bolsas plásticas', 'Envases PET');
+    } else if (lowerUrl.includes('tree') || lowerUrl.includes('rama') || lowerUrl.includes('poda')) {
+      category = 'ESCOMBROS';
+      description = 'Restos de poda y ramas vegetales mezclados con basura urbana.';
+      elements.push('Ramas', 'Hojas secas');
+      confidence = 0.72;
+      confidenceLevel = 'MEDIA';
+    } else if (lowerUrl.includes('drain') || lowerUrl.includes('alcantarilla') || lowerUrl.includes('obstru')) {
+      category = 'ALCANTARILLA';
+      description = 'Obstrucción parcial de alcantarilla con basura y sedimentos.';
+      elements.push('Obstrucción', 'Sedimento');
+      confidence = 0.81;
+    } else if (lowerUrl.includes('hazard') || lowerUrl.includes('peligroso') || lowerUrl.includes('chemical')) {
+      category = 'PELIGROSO';
+      description = 'Posible residuo peligroso, requiere verificación humana.';
+      elements.push('Sustancia sospechosa');
+      confidence = 0.65;
+      confidenceLevel = 'MEDIA';
+    } else {
+      // Categoría genérica de microbasural mixto
+      category = 'BASURAL';
+      description = 'Acumulación de residuos sólidos mixtos en la vereda.';
+      elements.push('Bolsas plásticas', 'Residuos mixtos', 'Restos vegetales ligeros');
+    }
+
+    return {
+      status: 'SUCCESS',
+      suggestedCategory: category,
+      confidenceScore: confidence,
+      confidenceLevel: confidenceLevel,
+      isHazardousSuspect: category === 'PELIGROSO',
+      requiresHumanReview: false,
+      qualityIssue: null,
+      suggestedDescription: description,
+      detectedElements: elements,
+      explanation: `Se detectó patrón que coincide con la categoría "${category}". Revisar la foto para confirmar la clasificación.`,
+    };
+  }
     // Simulación de latencia de inferencia de visión artificial
     await new Promise((resolve) => setTimeout(resolve, 950));
 

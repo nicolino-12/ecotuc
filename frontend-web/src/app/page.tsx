@@ -7,7 +7,7 @@ import {
   ListFilter, ShieldAlert, PlusCircle, Smartphone, Map as MapIcon, 
   ClipboardList, LogOut, Send, Camera, User, Lock, Mail, Check, HelpCircle, Info,
   Database, RefreshCw, Eye, Phone, Home, Flame, BarChart3, AlertCircle, ArrowRight,
-  Wrench, ChevronDown
+  Wrench, ChevronDown, Navigation, Loader2
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { io } from 'socket.io-client';
@@ -447,27 +447,36 @@ export default function AppContainer() {
 
   // Buscar dirección con Nominatim
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+  const [isGettingGPS, setIsGettingGPS] = useState(false);
 
   // Solicitar ubicación GPS explícitamente tras clic del usuario
   const handleGPSLocation = () => {
     if (!navigator.geolocation) {
-      alert("La geolocalización no es compatible con este navegador.");
+      setLocationFeedback("La geolocalización no es compatible con este navegador.");
       return;
     }
-    setLocationFeedback("Obteniendo coordenadas GPS...");
+    setIsGettingGPS(true);
+    setLocationFeedback("📡 Obteniendo tu ubicación actual...");
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
         setCitCoords({ lat: latitude, lng: longitude });
         setLocationInput(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
-        setLocationFeedback("Ubicación GPS obtenida con éxito.");
+        setLocationFeedback("✅ ¡Ubicación actual obtenida con éxito!");
         setIsLocationConfirmed(true);
+        setIsGettingGPS(false);
       },
       (error) => {
         console.error(error);
-        setLocationFeedback("No se pudo obtener la ubicación GPS.");
+        const messages: Record<number, string> = {
+          1: "Permiso de ubicación denegado. Habilítalo en la configuración de tu navegador.",
+          2: "No se pudo determinar la ubicación. Intenta de nuevo.",
+          3: "La solicitud de ubicación tardó demasiado. Intenta de nuevo.",
+        };
+        setLocationFeedback(messages[error.code] || "No se pudo obtener la ubicación GPS.");
+        setIsGettingGPS(false);
       },
-      { enableHighAccuracy: true }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
 
@@ -1285,7 +1294,48 @@ export default function AppContainer() {
                   </select>
                 </div>
 
-                {/* 3. Input de Dirección / Coordenadas / Maps Link */}
+                {/* 3. BOTÓN RÁPIDO DE UBICACIÓN ACTUAL */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs text-gray-800 dark:text-gray-300 font-bold uppercase">
+                    Ubicación Rápida:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGPSLocation}
+                    disabled={isGettingGPS}
+                    className={`w-full flex items-center justify-center gap-3 py-4 px-5 rounded-xl border-2 text-sm font-bold transition-all duration-300 cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none shadow-md ${
+                      isGettingGPS
+                        ? 'bg-primary/20 border-primary/40 text-primary animate-pulse cursor-wait'
+                        : isLocationConfirmed && locationInput
+                        ? 'bg-green-500/10 border-green-500/40 text-green-600 dark:text-green-400 hover:bg-green-500/20'
+                        : 'bg-gradient-to-r from-primary/10 to-emerald-500/10 border-primary/30 text-primary hover:from-primary/20 hover:to-emerald-500/20 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10'
+                    }`}
+                  >
+                    {isGettingGPS ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span>Obteniendo ubicación...</span>
+                      </>
+                    ) : isLocationConfirmed && locationInput ? (
+                      <>
+                        <CheckCircle className="h-5 w-5" />
+                        <span>Ubicación obtenida — Toca para actualizar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Navigation className="h-5 w-5" />
+                        <span>📍 Usar mi ubicación actual</span>
+                      </>
+                    )}
+                  </button>
+                  {isLocationConfirmed && locationInput && (
+                    <p className="text-[10px] text-green-600 dark:text-green-400 font-bold flex items-center gap-1">
+                      <MapPin className="h-3 w-3" /> Coordenadas: {citCoords.lat.toFixed(6)}, {citCoords.lng.toFixed(6)}
+                    </p>
+                  )}
+                </div>
+
+                {/* 4. Input de Dirección / Coordenadas / Maps Link */}
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="cit-location-input" className="text-xs text-gray-800 dark:text-gray-300 font-bold">
                     Dirección de Tucumán o Coordenadas de Maps:
